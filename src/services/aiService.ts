@@ -1,42 +1,7 @@
 import type { PayloadMessage, ChatRequest } from '@/types'
-import { quotaService } from './quotaService'
 
 // API endpoint - can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
-
-/**
- * 获取请求头（包含访问密码）
- */
-function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  const password = quotaService.getAccessPassword()
-  if (password) {
-    headers['X-Access-Password'] = password
-  }
-  return headers
-}
-
-/**
- * 检查配额并在需要时消耗
- */
-function checkAndConsumeQuota(response: Response): void {
-  const quotaExempt = response.headers.get('X-Quota-Exempt')
-  // 只有当不免除配额时才消耗
-  if (quotaExempt !== 'true') {
-    quotaService.consumeQuota()
-  }
-}
-
-/**
- * 检查是否有足够配额（有密码时跳过检查）
- */
-function ensureQuotaAvailable(): void {
-  if (!quotaService.hasAccessPassword() && !quotaService.hasQuotaRemaining()) {
-    throw new Error('今日配额已用完，请明天再试或设置访问密码')
-  }
-}
 
 interface ParseUrlResponse {
   success: boolean
@@ -94,13 +59,11 @@ export const aiService = {
    * Send chat messages to AI and get response (non-streaming)
    */
   async chat(messages: PayloadMessage[]): Promise<string> {
-    ensureQuotaAvailable()
-
     const request: ChatRequest = { messages }
 
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
 
@@ -108,8 +71,6 @@ export const aiService = {
       const error = await response.text()
       throw new Error(`AI request failed: ${error}`)
     }
-
-    checkAndConsumeQuota(response)
 
     const data = await response.json()
     return data.content || data.message || ''
@@ -127,13 +88,11 @@ export const aiService = {
     onChunk: (chunk: string, accumulated: string) => void,
     onComplete?: (content: string) => void
   ): Promise<string> {
-    ensureQuotaAvailable()
-
     const request: ChatRequest = { messages, stream: true } as ChatRequest & { stream: boolean }
 
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
 
@@ -141,9 +100,6 @@ export const aiService = {
       const error = await response.text()
       throw new Error(`AI request failed: ${error}`)
     }
-
-    // 流式请求成功后检查并消耗配额
-    checkAndConsumeQuota(response)
 
     const reader = response.body?.getReader()
     if (!reader) {

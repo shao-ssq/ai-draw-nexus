@@ -3,7 +3,6 @@ export interface Env {
   AI_BASE_URL: string
   AI_API_KEY: string
   AI_MODEL_ID: string
-  ACCESS_PASSWORD?: string
 }
 
 export interface Message {

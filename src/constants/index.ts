@@ -1,6 +1,5 @@
 import {
   Home,
-  User,
   GitBranch,
   Network,
   Workflow,
@@ -8,7 +7,6 @@ import {
   Users,
   ShoppingCart,
   FolderOpen,
-  BookOpen,
   CassetteTape
 } from 'lucide-react'
 import type { EngineType } from '@/types'
@@ -22,7 +20,6 @@ export const ENGINES: { value: EngineType; label: string }[] = [
 export const NAV_ITEMS = [
   { icon: Home, label: '首页', path: '/' },
   { icon: FolderOpen, label: '项目管理', path: '/projects' },
-  { icon: User, label: '用户信息', path: '/profile' },
   { icon: CassetteTape, label: '关于', path: '/about' },
 ]
 

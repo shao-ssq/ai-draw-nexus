@@ -1,32 +1,43 @@
-import type { Env, Message } from './types'
-import { corsHeaders } from './cors'
-import { convertContentPartsToAnthropic } from './ai-providers'
+import type { Env, Message } from './types.js'
+import { corsHeaders } from './cors.js'
+import { convertContentPartsToAnthropic } from './ai-providers.js'
 
-export async function streamOpenAI(messages: Message[], env: Env, exempt: boolean = false): Promise<Response> {
-  const baseUrl = env.AI_BASE_URL
+export async function streamAnthropic(messages: Message[], env: Env): Promise<Response> {
+  const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')
+  const messagesPath = baseUrl.endsWith('/v1') ? '/messages' : '/v1/messages'
   const apiKey = env.AI_API_KEY
 
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const systemMessage = messages.find((m) => m.role === 'system')
+  const nonSystemMessages = messages.filter((m) => m.role !== 'system')
+
+  const anthropicMessages = nonSystemMessages.map((m) => ({
+    role: m.role as 'user' | 'assistant',
+    content: typeof m.content === 'string' ? m.content : convertContentPartsToAnthropic(m.content),
+  }))
+
+  const response = await fetch(`${baseUrl}${messagesPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
       model: env.AI_MODEL_ID,
-      messages: messages,
       max_tokens: 64000,
+      system: typeof systemMessage?.content === 'string' ? systemMessage.content : '',
+      messages: anthropicMessages,
       stream: true,
     }),
   })
 
   if (!response.ok) {
     const error = await response.text()
-    throw new Error(`OpenAI API error: ${error}`)
+    throw new Error(`Anthropic API error: ${error}`)
   }
 
   const { readable, writable } = new TransformStream()
@@ -61,9 +72,8 @@ export async function streamOpenAI(messages: Message[], env: Env, exempt: boolea
 
           try {
             const parsed = JSON.parse(data)
-            const content = parsed.choices?.[0]?.delta?.content
-            if (content) {
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ content: parsed.delta.text })}\n\n`))
             }
           } catch {
             // Skip invalid JSON
@@ -82,7 +92,6 @@ export async function streamOpenAI(messages: Message[], env: Env, exempt: boolea
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'X-Quota-Exempt': exempt ? 'true' : 'false',
     },
   })
 }

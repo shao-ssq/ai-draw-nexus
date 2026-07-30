@@ -1,82 +1,6 @@
-# AI Diagram Hub
+## 本地开发
 
-An AI-powered diagram creation platform. Describe your diagram in natural language, and AI generates it for you.
-
-Built on Cloudflare Pages with React frontend and Pages Functions backend.
-
-## Key Highlights
-
-### Three Drawing Engines
-
-Three distinctive drawing engines to meet different needs:
-
-- **Mermaid** - Flowcharts, sequence diagrams, class diagrams - code-driven, precise control
-- **Excalidraw** - Hand-drawn style diagrams, clean and beautiful, great for brainstorming
-- **Draw.io** - Professional diagram editor, feature-rich, ideal for complex diagrams
-
-### Intuitive Project Management
-
-- Easily manage all your diagram projects
-- Complete version history, restore to any previous version
-- **All data stored locally** - no privacy concerns
-
-### Superior Drawing Experience
-
-- **Instant Response** - Almost all diagrams render in seconds, no more waiting
-- **Beautiful Styling** - Specially optimized Mermaid rendering for significantly improved aesthetics
-- **Smart Editing** - Continue editing based on existing diagrams, AI understands context
-- **Spatial Awareness** - Better layout capabilities, fewer arrows crossing through elements
-
-### Multimodal Input
-
-Beyond text descriptions, also supports:
-
-- **Document Visualization** - Upload documents to auto-generate visual diagrams
-- **Image Recreation** - Upload images, AI recognizes and recreates diagrams
-- **Link Parsing** - Enter URLs to auto-parse content and generate diagrams
-
-## Quick Start
-
-### Option 1: Quick Generate from Homepage
-
-1. Open the homepage
-2. Select a drawing engine (Mermaid / Excalidraw / Draw.io)
-3. Enter your diagram description, e.g., "Draw a user login flowchart"
-4. Click Generate - AI creates the project and diagram automatically
-
-### Option 2: Project Management
-
-1. Go to the Projects page
-2. Click "New Project"
-3. Choose an engine and name your project
-4. Use the chat panel in the editor to describe your needs
-
-## Usage Tips
-
-### AI Chat Generation
-
-In the chat panel on the right side of the editor, you can:
-
-- Describe new diagrams: "Draw an e-commerce checkout flow"
-- Modify existing diagrams: "Change the payment node to red"
-- Add elements: "Add an inventory check step"
-
-### Manual Editing
-
-- **Excalidraw** - Drag and draw directly on the canvas
-- **Draw.io** - Use professional diagram editing tools
-- **Mermaid** - Edit the code directly
-
-### Version Management
-
-- Click the "History" button in the toolbar
-- View all historical versions
-- Click any version to preview
-- Click "Restore" to revert to that version
-
-## Local Development
-
-### 1. Clone and Install Dependencies
+### 1. 克隆项目并安装依赖
 
 ```bash
 git clone https://github.com/liujuntao123/smart-ai-draw
@@ -84,73 +8,71 @@ cd smart-ai-draw
 pnpm install
 ```
 
-### 2. Configure Environment Variables
+### 2. 配置环境变量
 
-Create a `.dev.vars` file in the root directory:
+在根目录下创建 `.env` 文件（参考 `.env.example`）：
 
 ```env
 AI_API_KEY=your-api-key
-AI_BASE_URL=https://api.openai.com/v1
-AI_PROVIDER=openai
-AI_MODEL_ID=gpt-4o-mini
+AI_BASE_URL=https://api.anthropic.com
+AI_PROVIDER=anthropic
+AI_MODEL_ID=claude-sonnet-5
+PORT=8787
 ```
 
-> Supports OpenAI, Anthropic, and other OpenAI-compatible services
+> 支持 OpenAI 协议与 Anthropic 协议及任何兼容服务。base URL 是否带 `/v1` 均可，代码会自动适配。
 
-### 3. Start Development Server
+### 3. 启动开发服务器
 
 ```bash
-# Start frontend + backend together
+# 同时启动前端和后端
 pnpm run dev
-# Visit http://localhost:8787
+# 访问 http://localhost:8787
 
-# Or run separately:
-pnpm run dev:frontend   # Vite only (http://localhost:5173)
-pnpm run dev:backend    # Wrangler Pages only (http://localhost:8787)
+# 或者分别启动：
+pnpm run dev:frontend   # 仅 Vite (http://localhost:5173)
+pnpm run dev:backend    # 仅 Node 后端 (http://localhost:8787)
 ```
 
-**Note**: Access `http://localhost:8787` during development (wrangler proxies vite).
+**注意**：开发时访问 `http://localhost:8787`（Node 进程同源托管前端与 API）。
 
-## Cloudflare Pages Deployment
+## 生产部署
 
-### 1. Build
+### 1. 构建
 
 ```bash
-pnpm run build        # TypeScript check + Vite build
+pnpm run build        # TypeScript 检查 + Vite 构建 + 编译 server
 ```
 
-### 2. Configure Production Secrets
+产出 `dist/`（前端静态资源）与 `dist-server/`（后端 JS）。
+
+### 2. 配置环境变量
+
+在部署环境中配置与 `.env.example` 相同的变量（`AI_API_KEY` 等），可通过服务器环境变量或 `.env` 文件注入。
+
+### 3. 启动
 
 ```bash
-wrangler pages secret put AI_API_KEY
-wrangler pages secret put AI_BASE_URL
-wrangler pages secret put AI_PROVIDER
-wrangler pages secret put AI_MODEL_ID
+PORT=8787 node dist-server/index.js
 ```
 
-Or configure environment variables in Cloudflare Pages dashboard.
+建议使用 pm2 或 systemd 守护进程。单 Node 进程同源托管前端静态资源与 `/api/*`。
 
-### 3. Deploy
+### 支持的 AI 服务
 
-```bash
-pnpm run pages:deploy
-```
-
-### Supported AI Services
-
-| Provider | AI_PROVIDER | AI_BASE_URL | Recommended Models |
-|----------|-------------|-------------|-------------------|
+| 服务商 | AI_PROVIDER | AI_BASE_URL | 推荐模型 |
+|--------|-------------|-------------|----------|
 | OpenAI | openai | https://api.openai.com/v1 | gpt-5 |
-| Anthropic | anthropic | https://api.anthropic.com/v1 | claude-sonnet-4-5 |
-| Other compatible | openai | Custom URL | - |
+| Anthropic | anthropic | https://api.anthropic.com | claude-sonnet-4-5 |
+| 其他兼容服务 | openai / anthropic | 自定义 URL | - |
 
-## Tech Stack
+## 技术栈
 
-- Frontend: React 19 + Vite + TypeScript + Tailwind CSS
-- State: Zustand
-- Storage: Dexie.js (IndexedDB)
-- Backend: Cloudflare Pages Functions
+- 前端：React 19 + Vite + TypeScript + Tailwind CSS
+- 状态管理：Zustand
+- 本地存储：Dexie.js (IndexedDB)
+- 后端：Node.js + Hono
 
-## License
+## 开源协议
 
 MIT

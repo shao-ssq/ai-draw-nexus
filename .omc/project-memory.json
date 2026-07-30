@@ -1,0 +1,365 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1785380758156,
+  "projectRoot": "D:\\WebStormWorkspace\\WeDraw",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "19.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "7.2.4",
+        "category": "build"
+      }
+    ],
+    "packageManager": "pnpm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "pnpm build",
+    "testCommand": null,
+    "lintCommand": "pnpm lint",
+    "devCommand": "pnpm dev",
+    "scripts": {
+      "dev": "concurrently \"pnpm run dev:frontend\" \"pnpm run dev:backend\"",
+      "dev:frontend": "vite",
+      "dev:backend": "wrangler pages dev --compatibility-date=2024-01-01 --proxy=5173",
+      "build": "tsc -b && vite build",
+      "lint": "eslint .",
+      "preview": "vite preview",
+      "pages:deploy": "pnpm run build && wrangler pages deploy dist"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "feature-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "public",
+      "src"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "functions": {
+      "path": "functions",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1785380758123,
+      "keyFiles": []
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 3,
+      "lastAccessed": 1785380758123,
+      "keyFiles": [
+        "contact.png",
+        "donate.png",
+        "vite.svg"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1785380758130,
+      "keyFiles": [
+        "App.tsx",
+        "index.css",
+        "main.tsx"
+      ]
+    },
+    "functions\\api": {
+      "path": "functions\\api",
+      "purpose": "API routes",
+      "fileCount": 3,
+      "lastAccessed": 1785380758130,
+      "keyFiles": [
+        "chat.ts",
+        "health.ts",
+        "parse-url.ts"
+      ]
+    },
+    "src\\assets": {
+      "path": "src\\assets",
+      "purpose": "Static assets",
+      "fileCount": 1,
+      "lastAccessed": 1785380758131,
+      "keyFiles": [
+        "react.svg"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 0,
+      "lastAccessed": 1785380758131,
+      "keyFiles": []
+    },
+    "src\\lib": {
+      "path": "src\\lib",
+      "purpose": "Library code",
+      "fileCount": 5,
+      "lastAccessed": 1785380758131,
+      "keyFiles": [
+        "db.ts",
+        "fileUtils.ts",
+        "promptBuilder.ts"
+      ]
+    },
+    "src\\pages": {
+      "path": "src\\pages",
+      "purpose": "Page components",
+      "fileCount": 6,
+      "lastAccessed": 1785380758131,
+      "keyFiles": [
+        "AboutPage.tsx",
+        "EditorPage.tsx",
+        "HomePage.tsx"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "functions/api/_shared/stream-anthropic.ts",
+      "accessCount": 8,
+      "lastAccessed": 1785382177139,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/_shared/ai-providers.ts",
+      "accessCount": 7,
+      "lastAccessed": 1785381559653,
+      "type": "file"
+    },
+    {
+      "path": "src/constants/index.ts",
+      "accessCount": 5,
+      "lastAccessed": 1785382247036,
+      "type": "file"
+    },
+    {
+      "path": "server/_shared/ai-providers.ts",
+      "accessCount": 5,
+      "lastAccessed": 1785383007552,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 5,
+      "lastAccessed": 1785383284784,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/_shared/stream-openai.ts",
+      "accessCount": 4,
+      "lastAccessed": 1785382178522,
+      "type": "file"
+    },
+    {
+      "path": "src/services/aiService.ts",
+      "accessCount": 4,
+      "lastAccessed": 1785382209573,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 3,
+      "lastAccessed": 1785382859595,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/chat.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785382167889,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/_shared/cors.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785382185937,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/_shared/types.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785382186581,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/index.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785382223510,
+      "type": "file"
+    },
+    {
+      "path": "src/App.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1785382224098,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.json",
+      "accessCount": 2,
+      "lastAccessed": 1785382827480,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 2,
+      "lastAccessed": 1785382852371,
+      "type": "file"
+    },
+    {
+      "path": "server/index.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383006973,
+      "type": "file"
+    },
+    {
+      "path": "server/routes/chat.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383008120,
+      "type": "file"
+    },
+    {
+      "path": "server/routes/parse-url.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383008699,
+      "type": "file"
+    },
+    {
+      "path": "server/routes/health.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383009302,
+      "type": "file"
+    },
+    {
+      "path": "server/_shared/stream-openai.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383021530,
+      "type": "file"
+    },
+    {
+      "path": "server/_shared/stream-anthropic.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785383022102,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 2,
+      "lastAccessed": 1785383251324,
+      "type": "file"
+    },
+    {
+      "path": ".dev.vars",
+      "accessCount": 1,
+      "lastAccessed": 1785381650359,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/_shared/auth.ts",
+      "accessCount": 1,
+      "lastAccessed": 1785382013109,
+      "type": "file"
+    },
+    {
+      "path": "src/services/quotaService.ts",
+      "accessCount": 1,
+      "lastAccessed": 1785382013119,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/ProfilePage.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1785382113388,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/health.ts",
+      "accessCount": 1,
+      "lastAccessed": 1785382418800,
+      "type": "file"
+    },
+    {
+      "path": "vite.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1785382418805,
+      "type": "file"
+    },
+    {
+      "path": "functions/api/parse-url.ts",
+      "accessCount": 1,
+      "lastAccessed": 1785382418831,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.node.json",
+      "accessCount": 1,
+      "lastAccessed": 1785382418855,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.app.json",
+      "accessCount": 1,
+      "lastAccessed": 1785382676396,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/shaoqisun/.claude/plans/graceful-bouncing-castle.md",
+      "accessCount": 1,
+      "lastAccessed": 1785382720833,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.server.json",
+      "accessCount": 1,
+      "lastAccessed": 1785382826904,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/SHAOQI~1/AppData/Local/Temp/claude/D--WebStormWorkspace-WeDraw/4e66466f-478b-4e87-b5dd-e74238f63798/tasks/b7g8pn0fj.output",
+      "accessCount": 1,
+      "lastAccessed": 1785382976438,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

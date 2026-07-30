@@ -1,15 +1,12 @@
+import { Hono } from 'hono'
 import { parseHTML } from 'linkedom'
 import { Readability } from '@mozilla/readability'
 import TurndownService from 'turndown'
-import { corsHeaders } from './_shared/cors'
+import { corsHeaders } from '../_shared/cors.js'
 
-interface Env {
-  [key: string]: string
-}
+const app = new Hono()
 
-export const onRequestOptions: PagesFunction<Env> = async () => {
-  return new Response(null, { headers: corsHeaders })
-}
+app.options('/parse-url', (c) => c.body(null, { headers: corsHeaders }))
 
 function isWechatArticle(url: string): boolean {
   return url.includes('mp.weixin.qq.com')
@@ -66,32 +63,19 @@ function extractWechatContent(document: any): { title: string; content: string }
   return { title, content: contentEl.innerHTML }
 }
 
-interface PagesContext {
-  request: Request
-  env: Env
-}
-
-export const onRequestPost: PagesFunction<Env> = async (context: PagesContext) => {
-  const { request } = context
-
+app.post('/parse-url', async (c) => {
   try {
-    const { url } = await request.json() as { url: string }
+    const { url } = await c.req.json() as { url: string }
 
     if (!url || typeof url !== 'string') {
-      return new Response(JSON.stringify({ error: '请提供有效的URL' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return c.json({ error: '请提供有效的URL' }, 400, corsHeaders)
     }
 
     let parsedUrl: URL
     try {
       parsedUrl = new URL(url)
     } catch {
-      return new Response(JSON.stringify({ error: 'URL格式无效' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return c.json({ error: 'URL格式无效' }, 400, corsHeaders)
     }
 
     const isWechat = isWechatArticle(url)
@@ -109,10 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async (context: PagesContext) =
     const response = await fetch(url, { headers, redirect: 'follow' })
 
     if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: `无法获取页面内容: ${response.status}` }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return c.json({ error: `无法获取页面内容: ${response.status}` }, 502, corsHeaders)
     }
 
     const html = await response.text()
@@ -145,10 +126,7 @@ export const onRequestPost: PagesFunction<Env> = async (context: PagesContext) =
     }
 
     if (!article) {
-      return new Response(
-        JSON.stringify({ error: '无法解析页面内容，该页面可能不是文章类型' }),
-        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return c.json({ error: '无法解析页面内容，该页面可能不是文章类型' }, 422, corsHeaders)
     }
 
     const turndownService = new TurndownService({
@@ -181,7 +159,7 @@ export const onRequestPost: PagesFunction<Env> = async (context: PagesContext) =
     const siteName = isWechat ? '微信公众号' : parsedUrl.hostname
     const fullMarkdown = `# ${article.title}\n\n> 来源: [${siteName}](${url})\n\n${markdown}`
 
-    return new Response(JSON.stringify({
+    return c.json({
       success: true,
       data: {
         title: article.title,
@@ -190,14 +168,15 @@ export const onRequestPost: PagesFunction<Env> = async (context: PagesContext) =
         siteName: article.siteName || siteName,
         url: url,
       },
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    }, 200, corsHeaders)
   } catch (error) {
     console.error('Parse URL error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : '解析失败' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    return c.json(
+      { error: error instanceof Error ? error.message : '解析失败' },
+      500,
+      corsHeaders
     )
   }
-}
+})
+
+export { app as parseUrl }

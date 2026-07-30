@@ -2,8 +2,7 @@
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Access-Password',
-  'Access-Control-Expose-Headers': 'X-Quota-Exempt',
+  'Access-Control-Allow-Headers': 'Content-Type',
 }
 
 export function handleCors(request: Request): Response | null {

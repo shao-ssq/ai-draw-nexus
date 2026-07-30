@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 2 && curl -s -w \\\"\\\\nHTTP %{http_code}\\\\n\\\" http://localhost:8787/api/health\",\"timeout\":15000,\"description\":\"Test health endpoint\"}",
+  "error": "Exit code 7\n\nHTTP 000",
+  "timestamp": "2026-07-30T03:42:50.308Z",
+  "retry_count": 1
+}

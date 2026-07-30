@@ -1,4 +1,4 @@
-import type { Env, Message, ContentPart, AnthropicContentPart, OpenAIResponse, AnthropicResponse } from './types'
+import type { Env, Message, ContentPart, AnthropicContentPart, OpenAIResponse, AnthropicResponse } from './types.js'
 
 export function convertContentPartsToAnthropic(parts: ContentPart[]): AnthropicContentPart[] {
   return parts
@@ -29,14 +29,15 @@ export function convertContentPartsToAnthropic(parts: ContentPart[]): AnthropicC
 }
 
 export async function callOpenAI(messages: Message[], env: Env): Promise<string> {
-  const baseUrl = env.AI_BASE_URL
+  const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')
+  const chatPath = baseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'
   const apiKey = env.AI_API_KEY
 
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetch(`${baseUrl}${chatPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -55,12 +56,13 @@ export async function callOpenAI(messages: Message[], env: Env): Promise<string>
     throw new Error(`OpenAI API error: ${error}`)
   }
 
-  const data: OpenAIResponse = await response.json()
+  const data = (await response.json()) as OpenAIResponse
   return data.choices[0]?.message?.content || ''
 }
 
 export async function callAnthropic(messages: Message[], env: Env): Promise<string> {
-  const baseUrl = env.AI_BASE_URL
+  const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')
+  const messagesPath = baseUrl.endsWith('/v1') ? '/messages' : '/v1/messages'
   const apiKey = env.AI_API_KEY
 
   if (!apiKey) {
@@ -75,7 +77,7 @@ export async function callAnthropic(messages: Message[], env: Env): Promise<stri
     content: typeof m.content === 'string' ? m.content : convertContentPartsToAnthropic(m.content),
   }))
 
-  const response = await fetch(`${baseUrl}/messages`, {
+  const response = await fetch(`${baseUrl}${messagesPath}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -95,6 +97,6 @@ export async function callAnthropic(messages: Message[], env: Env): Promise<stri
     throw new Error(`Anthropic API error: ${error}`)
   }
 
-  const data: AnthropicResponse = await response.json()
+  const data = (await response.json()) as AnthropicResponse
   return data.content[0]?.text || ''
 }

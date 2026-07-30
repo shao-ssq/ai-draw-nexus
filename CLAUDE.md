@@ -17,24 +17,26 @@ pnpm run dev
 
 # Or run separately:
 pnpm run dev:frontend   # Vite only (http://localhost:5173)
-pnpm run dev:backend    # Wrangler Pages only (http://localhost:8787)
+pnpm run dev:backend    # Node backend only (http://localhost:8787, tsx watch)
 
-# Build and deploy to Cloudflare Pages
-pnpm run pages:deploy
+# Build (frontend dist/ + server dist-server/)
+pnpm run build
+
+# Start production server
+pnpm start            # node dist-server/index.js
 
 # Other commands
-pnpm run build        # TypeScript check + Vite build
 pnpm run lint         # ESLint
 pnpm run preview      # Preview production build
 ```
 
-**Note**: 开发时访问 `http://localhost:8787`（wrangler 代理 vite）。
+**Note**: 开发时访问 `http://localhost:8787`（Node 进程同源托管前端与 API）。
 
 ## Architecture
 
 ### Monorepo Structure
 - **Root**: React frontend (Vite + React 19 + TypeScript)
-- **functions/**: Cloudflare Pages Functions (API endpoints)
+- **server/**: Node.js backend (Hono) — API endpoints + static file hosting
 
 ### Frontend Architecture
 
@@ -59,11 +61,14 @@ pnpm run preview      # Preview production build
 
 ### Backend Architecture
 
-Cloudflare Pages Functions (`functions/api/`):
-- `chat.ts` - AI chat endpoint (OpenAI/Anthropic proxy with streaming)
-- `parse-url.ts` - URL content parsing and markdown conversion
-- `health.ts` - Health check endpoint
-- `_shared/` - Shared utilities (types, CORS, auth, AI providers)
+Node.js + Hono server (`server/`):
+- `index.ts` - Hono app entry, mounts API routes, serves `dist/` static files with SPA fallback
+- `routes/chat.ts` - AI chat endpoint (OpenAI/Anthropic proxy with streaming)
+- `routes/parse-url.ts` - URL content parsing and markdown conversion
+- `routes/health.ts` - Health check endpoint
+- `_shared/` - Shared utilities (types, CORS, AI providers, streaming)
+
+The server reads config from `process.env` (loaded via `dotenv` from `.env`). Business logic uses Web-standard APIs (`Request`/`Response`/`fetch`/`TransformStream`), natively supported by Node 18+.
 
 ### Key Patterns
 
@@ -75,15 +80,13 @@ Cloudflare Pages Functions (`functions/api/`):
 
 ## Environment Setup
 
-Create `.dev.vars` file in root directory for local development:
+Create `.env` file in root directory (see `.env.example`):
 ```env
 AI_API_KEY=your-api-key
-AI_BASE_URL=https://api.openai.com/v1
-AI_PROVIDER=openai
-AI_MODEL_ID=gpt-4o-mini
+AI_BASE_URL=https://api.anthropic.com
+AI_PROVIDER=anthropic
+AI_MODEL_ID=claude-sonnet-5
+PORT=8787
 ```
 
-For production, configure environment variables in Cloudflare Pages dashboard or use:
-```bash
-wrangler pages secret put AI_API_KEY
-```
+For production, configure the same environment variables on the server (systemd/pm2 env, or a `.env` file next to `dist-server/`). The `VITE_API_BASE_URL` is not required — same-origin deployment resolves `/api` automatically.
