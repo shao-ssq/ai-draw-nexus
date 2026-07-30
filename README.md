@@ -3,8 +3,8 @@
 ### 1. 克隆项目并安装依赖
 
 ```bash
-git clone https://github.com/liujuntao123/smart-ai-draw
-cd smart-ai-draw
+git clone https://github.com/your-name/WeDraw
+cd WeDraw
 pnpm install
 ```
 
@@ -60,11 +60,11 @@ PORT=8787 node dist-server/index.js
 
 ### 支持的 AI 服务
 
-| 服务商 | AI_PROVIDER | AI_BASE_URL | 推荐模型 |
-|--------|-------------|-------------|----------|
-| OpenAI | openai | https://api.openai.com/v1 | gpt-5 |
-| Anthropic | anthropic | https://api.anthropic.com | claude-sonnet-4-5 |
-| 其他兼容服务 | openai / anthropic | 自定义 URL | - |
+| 服务商       | AI_PROVIDER        | AI_BASE_URL               | 推荐模型              |
+|-----------|--------------------|---------------------------|-------------------|
+| OpenAI    | openai             | https://api.openai.com/v1 | gpt-5             |
+| Anthropic | anthropic          | https://api.anthropic.com | claude-sonnet-4-5 |
+| 其他兼容服务    | openai / anthropic | 自定义 URL                   | -                 |
 
 ## 技术栈
 

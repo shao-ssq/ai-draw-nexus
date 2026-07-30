@@ -2,15 +2,15 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Project, VersionHistory } from '@/types'
 
 /**
- * AI Diagram Hub Database
+ * WeDraw Database
  * Using Dexie.js for IndexedDB management
  */
-class DiagramHubDB extends Dexie {
+class WeDrawDB extends Dexie {
   projects!: EntityTable<Project, 'id'>
   versionHistory!: EntityTable<VersionHistory, 'id'>
 
   constructor() {
-    super('DiagramHubDB')
+    super('WeDrawDB')
 
     this.version(1).stores({
       // Primary key: id, indexed fields: title, engineType, createdAt, updatedAt
@@ -22,4 +22,4 @@ class DiagramHubDB extends Dexie {
 }
 
 // Singleton database instance
-export const db = new DiagramHubDB()
+export const db = new WeDrawDB()

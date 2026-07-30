@@ -5,17 +5,22 @@
   /* Colors */
   --color-pure-black: #000000;
   --color-deep-gray: #1a1a1a;
-  --color-background-warm: #FAF9F7;
+  --color-background-cool: #F9FAFB;
   --color-pure-white: #FFFFFF;
-  --color-border-light: #EAEAEA;
-  --color-text-muted: #888888;
+  --color-border-light: #F3F4F6;
+  --color-border-subtle: #E5E7EB;
+  --color-text-muted: #6B7280;
   --color-accent-orange: #FF6B35;
   --color-accent-orange-light: #FFF4EE;
+
+  /* Shadows */
+  --color-shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  --color-shadow-card-hover: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
 
   /* Semantic Color Mapping */
   --color-primary: var(--color-deep-gray);
   --color-secondary: var(--color-deep-gray);
-  --color-background: var(--color-background-warm);
+  --color-background: var(--color-background-cool);
   --color-surface: var(--color-pure-white);
   --color-border: var(--color-border-light);
   --color-muted: var(--color-text-muted);
@@ -38,4 +43,10 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/* 打字机光标闪烁：硬切换显隐 */
+@keyframes caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }

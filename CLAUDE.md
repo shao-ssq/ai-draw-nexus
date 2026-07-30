@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Diagram Hub - An AI-powered diagram creation platform supporting Mermaid, Excalidraw, and Draw.io engines. Users describe diagrams in natural language and AI generates them.
+WeDraw - An AI-powered diagram creation platform supporting Mermaid, Excalidraw, and Draw.io engines. Users describe diagrams in natural language and AI generates them.
 
 ## Development Commands
 

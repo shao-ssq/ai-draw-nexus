@@ -3,18 +3,6 @@ import type { PayloadMessage, ChatRequest } from '@/types'
 // API endpoint - can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
-interface ParseUrlResponse {
-  success: boolean
-  data?: {
-    title: string
-    content: string
-    excerpt: string
-    siteName: string
-    url: string
-  }
-  error?: string
-}
-
 /**
  * Parse SSE data line and extract content
  */
@@ -147,24 +135,5 @@ export const aiService = {
 
     onComplete?.(fullContent)
     return fullContent
-  },
-
-  /**
-   * Parse URL content and convert to markdown
-   */
-  async parseUrl(url: string): Promise<ParseUrlResponse> {
-    const response = await fetch(`${API_BASE_URL}/parse-url`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    })
-
-    const data: ParseUrlResponse = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || '解析URL失败')
-    }
-
-    return data
   },
 }

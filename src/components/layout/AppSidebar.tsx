@@ -1,5 +1,4 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Plus } from 'lucide-react'
 import { NAV_ITEMS } from '@/constants'
 
 interface AppSidebarProps {
@@ -12,17 +11,6 @@ export function AppSidebar({ onCreateProject }: AppSidebarProps) {
 
   return (
     <aside className="fixed left-4 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center rounded-2xl border border-border bg-surface p-2 shadow-lg">
-      {/* New Project Button */}
-      <button
-        onClick={onCreateProject}
-        className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-      >
-        <Plus className="h-5 w-5 text-primary" />
-      </button>
-
-      {/* Divider */}
-      <div className="mb-3 h-px w-8 bg-border" />
-
       {/* Navigation Items */}
       <nav className="flex flex-col items-center gap-1">
         {NAV_ITEMS.map((item, index) => (

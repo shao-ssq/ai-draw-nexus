@@ -33,14 +33,7 @@ export interface DocumentAttachment {
   fileName: string
 }
 
-export interface UrlAttachment {
-  type: 'url'
-  content: string // Extracted markdown content
-  url: string
-  title: string
-}
-
-export type Attachment = ImageAttachment | DocumentAttachment | UrlAttachment
+export type Attachment = ImageAttachment | DocumentAttachment
 
 // Chat Message (UI Content Store)
 export interface ChatMessage {

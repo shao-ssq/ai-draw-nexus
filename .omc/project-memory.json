@@ -157,6 +157,24 @@
   },
   "hotPaths": [
     {
+      "path": "src/pages/HomePage.tsx",
+      "accessCount": 91,
+      "lastAccessed": 1785397620401,
+      "type": "file"
+    },
+    {
+      "path": "src/features/chat/ChatPanel.tsx",
+      "accessCount": 13,
+      "lastAccessed": 1785393221500,
+      "type": "file"
+    },
+    {
+      "path": "src/constants/index.ts",
+      "accessCount": 9,
+      "lastAccessed": 1785395363270,
+      "type": "file"
+    },
+    {
       "path": "functions/api/_shared/stream-anthropic.ts",
       "accessCount": 8,
       "lastAccessed": 1785382177139,
@@ -169,9 +187,27 @@
       "type": "file"
     },
     {
-      "path": "src/constants/index.ts",
-      "accessCount": 5,
-      "lastAccessed": 1785382247036,
+      "path": "src/services/aiService.ts",
+      "accessCount": 7,
+      "lastAccessed": 1785392970768,
+      "type": "file"
+    },
+    {
+      "path": "src/lib/db.ts",
+      "accessCount": 6,
+      "lastAccessed": 1785392143720,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 6,
+      "lastAccessed": 1785392150672,
+      "type": "file"
+    },
+    {
+      "path": "src/components/layout/AppHeader.tsx",
+      "accessCount": 6,
+      "lastAccessed": 1785393604583,
       "type": "file"
     },
     {
@@ -181,27 +217,63 @@
       "type": "file"
     },
     {
-      "path": "CLAUDE.md",
-      "accessCount": 5,
-      "lastAccessed": 1785383284784,
-      "type": "file"
-    },
-    {
       "path": "functions/api/_shared/stream-openai.ts",
       "accessCount": 4,
       "lastAccessed": 1785382178522,
       "type": "file"
     },
     {
-      "path": "src/services/aiService.ts",
+      "path": "server/index.ts",
       "accessCount": 4,
-      "lastAccessed": 1785382209573,
+      "lastAccessed": 1785393233906,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 4,
+      "lastAccessed": 1785393287871,
+      "type": "file"
+    },
+    {
+      "path": "src/index.css",
+      "accessCount": 4,
+      "lastAccessed": 1785395796225,
       "type": "file"
     },
     {
       "path": ".env.example",
       "accessCount": 3,
       "lastAccessed": 1785382859595,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/index.ts",
+      "accessCount": 3,
+      "lastAccessed": 1785392082503,
+      "type": "file"
+    },
+    {
+      "path": "src/App.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1785392091901,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 3,
+      "lastAccessed": 1785392151260,
+      "type": "file"
+    },
+    {
+      "path": "index.html",
+      "accessCount": 3,
+      "lastAccessed": 1785393595511,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useAIGenerate.ts",
+      "accessCount": 3,
+      "lastAccessed": 1785397741344,
       "type": "file"
     },
     {
@@ -223,33 +295,9 @@
       "type": "file"
     },
     {
-      "path": "src/pages/index.ts",
-      "accessCount": 2,
-      "lastAccessed": 1785382223510,
-      "type": "file"
-    },
-    {
-      "path": "src/App.tsx",
-      "accessCount": 2,
-      "lastAccessed": 1785382224098,
-      "type": "file"
-    },
-    {
       "path": "tsconfig.json",
       "accessCount": 2,
       "lastAccessed": 1785382827480,
-      "type": "file"
-    },
-    {
-      "path": "package.json",
-      "accessCount": 2,
-      "lastAccessed": 1785382852371,
-      "type": "file"
-    },
-    {
-      "path": "server/index.ts",
-      "accessCount": 2,
-      "lastAccessed": 1785383006973,
       "type": "file"
     },
     {
@@ -283,9 +331,21 @@
       "type": "file"
     },
     {
-      "path": "README.md",
+      "path": "src/types/index.ts",
       "accessCount": 2,
-      "lastAccessed": 1785383251324,
+      "lastAccessed": 1785392958631,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useTypewriter.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785395400289,
+      "type": "file"
+    },
+    {
+      "path": "src/components/layout/AppSidebar.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1785396485163,
       "type": "file"
     },
     {
@@ -358,6 +418,18 @@
       "path": "C:/Users/SHAOQI~1/AppData/Local/Temp/claude/D--WebStormWorkspace-WeDraw/4e66466f-478b-4e87-b5dd-e74238f63798/tasks/b7g8pn0fj.output",
       "accessCount": 1,
       "lastAccessed": 1785382976438,
+      "type": "file"
+    },
+    {
+      "path": "src/pages/AboutPage.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1785392069191,
+      "type": "file"
+    },
+    {
+      "path": "img.png",
+      "accessCount": 1,
+      "lastAccessed": 1785394315228,
       "type": "file"
     }
   ],

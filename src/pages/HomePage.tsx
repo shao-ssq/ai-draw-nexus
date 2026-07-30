@@ -1,15 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Paperclip, ChevronDown, Plus, Send, Link, X, MoveRight } from 'lucide-react'
-import { Button, Loading } from '@/components/ui'
+import { Paperclip, Send } from 'lucide-react'
+import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
-import { formatDate } from '@/lib/utils'
-import type { EngineType, Project, UrlAttachment, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
+import type { EngineType, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
-import { aiService } from '@/services/aiService'
-import { useToast } from '@/hooks/useToast'
+import { useTypewriter } from '@/hooks/useTypewriter'
 import {
   fileToBase64,
   parseDocument,
@@ -22,42 +20,18 @@ export function HomePage() {
   const [prompt, setPrompt] = useState('')
   const [selectedEngine, setSelectedEngine] = useState<EngineType>('mermaid')
   const [isLoading, setIsLoading] = useState(false)
-  const [recentProjects, setRecentProjects] = useState<Project[]>([])
-  const [showEngineDropdown, setShowEngineDropdown] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
-  const [urlAttachments, setUrlAttachments] = useState<UrlAttachment[]>([])
-  const [showUrlInput, setShowUrlInput] = useState(false)
-  const [urlInputValue, setUrlInputValue] = useState('')
-  const [isParsingUrl, setIsParsingUrl] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setInitialPrompt = useChatStore((state) => state.setInitialPrompt)
-  const { error: showError } = useToast()
+
+  // 输入框打字机演示：作为背景文字循环播放示例 prompt（不写入真实 prompt）
+  const [typedDemo, setTypedDemo] = useState('')
+  const [isTyping, setIsTyping] = useState(true)
+  const { stop: stopTypewriter } = useTypewriter(setTypedDemo, QUICK_ACTIONS.map((a) => a.prompt))
 
   // 新建项目弹窗状态
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-
-  useEffect(() => {
-    loadRecentProjects()
-  }, [])
-
-  // 点击外部关闭引擎选择下拉框
-  useEffect(() => {
-    const handleClickOutside = () => setShowEngineDropdown(false)
-    if (showEngineDropdown) {
-      document.addEventListener('click', handleClickOutside)
-      return () => document.removeEventListener('click', handleClickOutside)
-    }
-  }, [showEngineDropdown])
-
-  const loadRecentProjects = async () => {
-    try {
-      const projects = await ProjectRepository.getAll()
-      setRecentProjects(projects.slice(0, 5))
-    } catch (error) {
-      console.error('Failed to load projects:', error)
-    }
-  }
 
   const handleQuickStart = async () => {
     if (!prompt.trim()) return
@@ -92,9 +66,6 @@ export function HomePage() {
         }
       }
 
-      // 添加 URL 附件
-      convertedAttachments.push(...urlAttachments)
-
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
       setInitialPrompt(prompt.trim(), allAttachments)
@@ -109,15 +80,10 @@ export function HomePage() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
+      stopTypewriter()
+      setIsTyping(false)
       handleQuickStart()
     }
-  }
-
-  const handleQuickAction = async (action: (typeof QUICK_ACTIONS)[0]) => {
-    setSelectedEngine(action.engine)
-    setPrompt(action.prompt)
-    // 自动聚焦到输入框
-    textareaRef.current?.focus()
   }
 
   const handleAttachmentClick = () => {
@@ -135,38 +101,18 @@ export function HomePage() {
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }
 
-  const removeUrlAttachment = (index: number) => {
-    setUrlAttachments(prev => prev.filter((_, i) => i !== index))
-  }
-
-  const handleUrlSubmit = async () => {
-    const url = urlInputValue.trim()
-    if (!url) return
-
-    setIsParsingUrl(true)
-    try {
-      const result = await aiService.parseUrl(url)
-      if (result.data) {
-        const urlAttachment: UrlAttachment = {
-          type: 'url',
-          content: result.data.content,
-          url: result.data.url,
-          title: result.data.title,
-        }
-        setUrlAttachments(prev => [...prev, urlAttachment])
-        setUrlInputValue('')
-        setShowUrlInput(false)
-      }
-    } catch (err) {
-      showError(err instanceof Error ? err.message : '链接解析失败')
-      console.error(err)
-    } finally {
-      setIsParsingUrl(false)
-    }
-  }
-
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="relative flex min-h-screen overflow-hidden bg-background">
+      {/* Mesh Gradient 光晕背景 */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-40 -top-40 h-[36rem] w-[36rem] rounded-full bg-rose-200/20 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-40 top-0 h-[36rem] w-[36rem] rounded-full bg-teal-200/20 blur-3xl"
+      />
+
       {/* Floating Sidebar Navigation */}
       <AppSidebar onCreateProject={() => setIsCreateDialogOpen(true)} />
 
@@ -176,7 +122,7 @@ export function HomePage() {
         <AppHeader />
 
         {/* Hero Section */}
-        <div className="flex flex-1 flex-col items-center px-8 pt-12">
+        <div className="flex flex-1 flex-col items-center justify-start px-8 pt-45 pb-12">
           {/* Promotional Banner */}
           {/* <div className="mb-8 flex items-center gap-2 rounded-full bg-accent-light px-4 py-2">
             <span className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-surface">
@@ -197,18 +143,18 @@ export function HomePage() {
                 <Sparkles className="h-6 w-6 text-surface" />
               </div> */}
               <h1 className="text-3xl font-bold text-primary">
-                AI Draw Nexus 
+                  一句话生成可编辑的专业图表
               </h1>
             </div>
-            <p className="text-muted">AI驱动的一站式绘图平台</p>
+            <p className="text-muted"></p>
           </div>
 
           {/* Chat Input Box */}
-          <div className="mb-6 w-full max-w-2xl">
-            <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm transition-shadow focus-within:shadow-md">
+          <div className="mb-6 w-full max-w-[860px]">
+            <div className="flex flex-col gap-4 rounded-3xl border border-border bg-surface px-6 pb-4 pt-5 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.05),0_4px_12px_-2px_rgba(0,0,0,0.02)] transition-[box-shadow,border-color] focus-within:border-[rgba(156,163,175,0.5)] focus-within:shadow-[0_12px_36px_-5px_rgba(0,0,0,0.08)]">
               {/* 附件预览区域 */}
-              {(attachments.length > 0 || urlAttachments.length > 0) && (
-                <div className="mb-3 flex flex-wrap gap-2">
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
                   {attachments.map((file, index) => (
                     <div
                       key={`file-${index}`}
@@ -226,36 +172,31 @@ export function HomePage() {
                       </button>
                     </div>
                   ))}
-                  {urlAttachments.map((urlAtt, index) => (
-                    <div
-                      key={`url-${index}`}
-                      className="flex items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-sm"
-                    >
-                      <Link className="h-3 w-3 text-muted" />
-                      <span className="max-w-[150px] truncate text-primary">
-                        {urlAtt.title}
-                      </span>
-                      <button
-                        onClick={() => removeUrlAttachment(index)}
-                        className="text-muted hover:text-primary"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
 
-              <textarea
-                ref={textareaRef}
-                placeholder="描述你想要绘制的图表，AI Draw Nexus 会帮你完成..."
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-                className="min-h-[60px] w-full resize-none bg-transparent text-primary placeholder:text-muted focus:outline-none"
-                rows={2}
-              />
+              <div className="relative">
+                {/* 打字机背景演示文字 */}
+                {isTyping && !prompt.trim() && (
+                  <div className="pointer-events-none absolute inset-0 flex items-start px-2 py-2 text-[15px] leading-relaxed text-[#9ca3af]">
+                    <span>{typedDemo}</span>
+                    <span className="ml-0.5 mt-[3px] inline-block h-[18px] w-[2px] animate-[caret-blink_1s_steps(1)_infinite] bg-[#9ca3af]" />
+                  </div>
+                )}
+                <textarea
+                  ref={textareaRef}
+                  placeholder={isTyping ? '' : '描述你想要绘制的图表，WeDraw 会帮你完成...'}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onFocus={() => {
+                    stopTypewriter()
+                    setIsTyping(false)
+                  }}
+                  onKeyDown={handleKeyDown}
+                  disabled={isLoading}
+                  className="min-h-[100px] w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-[#1f2937] placeholder:text-[#9ca3af] focus:outline-none"
+                />
+              </div>
 
               {/* 隐藏的文件输入 */}
               <input
@@ -268,148 +209,71 @@ export function HomePage() {
               />
 
               {/* 底部工具栏 */}
-              <div className="flex items-center justify-between border-t border-border pt-3 mt-2">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* 左侧：图表类型标签组 */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {ENGINES.map((engine) => {
+                    const dotColor: Record<string, string> = {
+                      mermaid: 'bg-indigo-500',
+                      excalidraw: 'bg-orange-500',
+                      drawio: 'bg-emerald-500',
+                    }
+                    const descriptions: Record<string, string> = {
+                      mermaid: '适合流程、时序、ER 等结构化图；文本语法清晰，便于版本管理和后续手工修改。',
+                      excalidraw: '适合方案草图、白板讨论和产品构思；手绘感更自然，表达关系比追求精确排版更重要。',
+                      drawio: '适合架构、拓扑、UML 和交付级技术图；图元库丰富，适合复杂系统和规范化排版。',
+                    }
+                    const active = selectedEngine === engine.value
+                    return (
+                      <div key={engine.value} className="group relative">
+                        <button
+                          onClick={() => setSelectedEngine(engine.value)}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                            active
+                              ? 'bg-[#e5e7eb] text-[#111827]'
+                              : 'bg-[#f3f4f6] text-[#374151] hover:bg-[#e5e7eb]'
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${dotColor[engine.value]}`} />
+                          <span>{engine.label}</span>
+                        </button>
+                        {/* hover 提示气泡 */}
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-64 -translate-x-1/2 rounded-xl bg-primary px-3 py-2 text-xs leading-relaxed text-surface opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                          {descriptions[engine.value]}
+                          <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-primary" />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* 右侧：操作按钮组 */}
+                <div className="flex items-center gap-2">
                   {/* 上传附件 */}
                   <button
                     onClick={handleAttachmentClick}
-                    className="group relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-primary"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-primary"
                     title="可上传文档一键转化为图表，或上传截图复刻图表"
                   >
                     <Paperclip className="h-4 w-4" />
-                    <span>上传附件</span>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-primary px-3 py-2 text-xs text-surface opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                      可上传文档一键转化为图表，或上传截图复刻图表
-                      <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-primary"></div>
-                    </div>
                   </button>
 
-                  {/* 添加链接 */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowUrlInput(!showUrlInput)}
-                      disabled={isParsingUrl}
-                      className="group relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-primary disabled:opacity-50"
-                      title="添加网页链接，AI将解析内容"
-                    >
-                      <Link className="h-4 w-4" />
-                      <span>添加链接</span>
-                      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-primary px-3 py-2 text-xs text-surface opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                        添加网页链接，AI将解析内容生成图表
-                        <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-primary"></div>
-                      </div>
-                    </button>
-
-                    {/* 链接输入弹出框 */}
-                    {showUrlInput && (
-                      <div className="absolute bottom-full left-0 mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface p-2 shadow-lg">
-                        <input
-                          type="url"
-                          placeholder="输入网址链接..."
-                          value={urlInputValue}
-                          onChange={(e) => setUrlInputValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              handleUrlSubmit()
-                            } else if (e.key === 'Escape') {
-                              setShowUrlInput(false)
-                              setUrlInputValue('')
-                            }
-                          }}
-                          disabled={isParsingUrl}
-                          className="w-64 rounded border border-border bg-background px-2 py-1 text-sm outline-none focus:border-primary disabled:opacity-50"
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          onClick={handleUrlSubmit}
-                          disabled={!urlInputValue.trim() || isParsingUrl}
-                          className="h-7 px-2"
-                        >
-                          {isParsingUrl ? <Loading size="sm" /> : <MoveRight className="h-4 w-4" />}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowUrlInput(false)
-                            setUrlInputValue('')
-                          }}
-                          disabled={isParsingUrl}
-                          className="h-7 px-2"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
+                  {/* 发送按钮 */}
+                  <Button
+                    onClick={handleQuickStart}
+                    disabled={!prompt.trim() || isLoading}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <span>创建中...</span>
+                    ) : (
+                      <>
+                        <Send className="h-3.5 w-3.5" />
+                        <span>发送</span>
+                      </>
                     )}
-                  </div>
-
-                  {/* 选择绘图引擎 */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowEngineDropdown(!showEngineDropdown)
-                      }}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted transition-colors hover:bg-background hover:text-primary"
-                    >
-                      <span>{ENGINES.find(e => e.value === selectedEngine)?.label}</span>
-                      <ChevronDown className="h-4 w-4" />
-                    </button>
-                    {showEngineDropdown && (
-                      <div
-                        className="absolute bottom-full left-0 mb-2 w-64 rounded-xl border border-border bg-surface py-1 shadow-lg"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {ENGINES.map((engine) => {
-                          const descriptions: Record<string, string> = {
-                            mermaid: '简洁标准的图形绘制',
-                            excalidraw: '优雅干净的手绘风格',
-                            drawio: '专业而强大的绘图工具',
-                          }
-                          return (
-                            <button
-                              key={engine.value}
-                              onClick={() => {
-                                setSelectedEngine(engine.value)
-                                setShowEngineDropdown(false)
-                              }}
-                              className={`w-full px-4 py-2 text-left transition-colors hover:bg-background ${
-                                selectedEngine === engine.value
-                                  ? 'text-accent'
-                                  : 'text-primary'
-                              }`}
-                            >
-                              <div className={`text-sm ${selectedEngine === engine.value ? 'font-medium' : ''}`}>
-                                {engine.label}
-                              </div>
-                              <div className="text-xs text-muted mt-0.5">
-                                {descriptions[engine.value]}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  </Button>
                 </div>
-
-                {/* 发送按钮 */}
-                <Button
-                  onClick={handleQuickStart}
-                  disabled={!prompt.trim() || isLoading}
-                  className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm text-surface transition-colors hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <span>创建中...</span>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4" />
-                      <span>发送</span>
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
           </div>
@@ -422,84 +286,8 @@ export function HomePage() {
                 <span>📄 上传文档，可视化阅读</span>
                 <span className="text-border">·</span>
                 <span>🖼️ 上传图片复刻图表</span>
-                <span className="text-border">·</span>
-                <span>🔗 链接解析，快速解读网页</span>
               </span>
             </p>
-            <p className="mb-4 text-left text-sm text-muted">试试这些用例，快速开始</p>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              {QUICK_ACTIONS.map((action, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleQuickAction(action)}
-                  disabled={isLoading}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-all hover:border-primary hover:shadow-md disabled:opacity-50"
-                >
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-background">
-                    <action.icon className="h-5 w-5 text-accent" />
-                  </div>
-                  <span className="text-sm text-primary line-clamp-2">{action.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Recent Projects Section */}
-          <div className="w-full max-w-6xl pb-12">
-            <h2 className="mb-4 text-lg font-medium text-primary">最近项目</h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {/* New Project Card */}
-              <button
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                style={{ height: 'calc(6rem + 68px)' }}
-              >
-                <Plus className="mb-2 h-6 w-6 text-muted" />
-                <span className="text-sm text-muted">新建项目</span>
-              </button>
-
-              {/* Recent Projects */}
-              {recentProjects.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => navigate(`/editor/${project.id}`)}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                >
-                  <div className="flex h-24 items-center justify-center bg-background">
-                    {project.thumbnail ? (
-                      <img
-                        src={project.thumbnail}
-                        alt={project.title}
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <Sparkles className="h-8 w-8 text-muted" />
-                    )}
-                  </div>
-                  <div className="p-3 text-left">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium text-primary">
-                        {project.title === `Untitled-${project.id}`
-                          ? '未命名'
-                          : project.title}
-                      </p>
-                      <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        project.engineType === 'excalidraw'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                          : project.engineType === 'drawio'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
-                      }`}>
-                        {project.engineType.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted">
-                      更新于 {formatDate(project.updatedAt)}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </main>

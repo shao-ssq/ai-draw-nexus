@@ -4,14 +4,12 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { chat } from './routes/chat.js'
 import { health } from './routes/health.js'
-import { parseUrl } from './routes/parse-url.js'
 
 const app = new Hono()
 
 // API 路由
 app.route('/api', chat)
 app.route('/api', health)
-app.route('/api', parseUrl)
 
 // 前端静态资源（vite build 产物），同源托管
 app.use('/*', serveStatic({ root: './dist' }))

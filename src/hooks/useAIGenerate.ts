@@ -68,12 +68,6 @@ function buildMultimodalContent(
           type: 'text',
           text: `\n\n[Document: ${attachment.fileName}]\n${attachment.content}`,
         })
-      } else if (attachment.type === 'url') {
-        // For URLs, append the extracted markdown content
-        parts.push({
-          type: 'text',
-          text: `\n\n[URL: ${attachment.title}]\n${attachment.content}`,
-        })
       }
     }
   }
