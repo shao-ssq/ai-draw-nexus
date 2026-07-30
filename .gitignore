@@ -27,3 +27,6 @@ dist-ssr
 
 # Build output
 dist-server
+
+# OMC (oh-my-claudecode) local state
+.omc
