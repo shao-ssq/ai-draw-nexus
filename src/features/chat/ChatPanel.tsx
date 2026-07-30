@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, FileText, User, Bot, X, MessageSquarePlus, Loader2, CheckCircle2 } from 'lucide-react'
+import { Send, ImagePlus, FileText, X, MessageSquarePlus, Loader2, CheckCircle2, Copy, Check, PanelLeftClose } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
@@ -16,10 +16,15 @@ import {
 } from '@/lib/fileUtils'
 import type { Attachment, ImageAttachment, DocumentAttachment } from '@/types'
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  onCollapse?: () => void
+}
+
+export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [inputValue, setInputValue] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isProcessingFile, setIsProcessingFile] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
@@ -27,7 +32,19 @@ export function ChatPanel() {
   const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const { generate } = useAIGenerate()
-  const { error: showError } = useToast()
+  const { error: showError, success: showSuccess } = useToast()
+
+  const handleCopy = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(id)
+      showSuccess('已复制')
+      setTimeout(() => setCopiedId((curr) => (curr === id ? null : curr)), 1500)
+    } catch (err) {
+      showError('复制失败')
+      console.error(err)
+    }
+  }
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -148,29 +165,38 @@ export function ChatPanel() {
   return (
     <div className="flex h-full flex-col bg-surface">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-1">
-        <div>
-          <h2 className="font-medium text-primary">AI 助手</h2>
-          <p className="text-xs text-muted">
-            {isCanvasEmpty ? '新建图表' : '基于当前图表修改'}
-          </p>
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="WeDraw" className="h-8 w-8 rounded-lg object-contain" />
+          <h2 className="font-medium text-primary">助手</h2>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          title="新建对话"
-          onClick={clearMessages}
-          disabled={isStreaming || messages.length === 0}
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            title="收起侧栏"
+            onClick={onCollapse}
+            className="rounded-lg border border-[#e5e7eb]"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="新建对话"
+            onClick={clearMessages}
+            disabled={isStreaming || messages.length === 0}
+            className="rounded-lg border border-[#e5e7eb]"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted">
-            <Bot className="mb-4 h-12 w-12 opacity-50" />
             <p className="text-sm">
               描述你的需求
             </p>
@@ -179,30 +205,15 @@ export function ChatPanel() {
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex gap-3 mb-4 ${
-                msg.role === 'user' ? 'flex-row-reverse' : ''
+              className={`flex mb-4 ${
+                msg.role === 'user' ? 'justify-end' : 'justify-start'
               }`}
             >
-              {/* Avatar */}
-              <div
-                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-surface'
-                    : 'border border-border bg-surface text-primary'
-                }`}
-              >
-                {msg.role === 'user' ? (
-                  <User className="h-4 w-4" />
-                ) : (
-                  <Bot className="h-4 w-4" />
-                )}
-              </div>
-
               {/* Content */}
               <div
                 className={`max-w-[80%] px-3 py-2 ${
                   msg.role === 'user'
-                    ? 'bg-primary text-surface'
+                    ? 'rounded-2xl rounded-br-md bg-primary text-surface'
                     : 'border border-border bg-background'
                 }`}
               >
@@ -244,6 +255,20 @@ export function ChatPanel() {
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 )}
               </div>
+              {/* 用户消息的复制按钮 */}
+              {msg.role === 'user' && (
+                <button
+                  onClick={() => handleCopy(msg.content, msg.id)}
+                  title="复制"
+                  className="ml-1 mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center self-end rounded-md border border-border text-muted transition-colors hover:bg-background hover:text-primary"
+                >
+                  {copiedId === msg.id ? (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
             </div>
           ))
         )}
@@ -308,7 +333,7 @@ export function ChatPanel() {
                 title="上传图片"
                 onClick={handleImageUpload}
                 disabled={isStreaming || isProcessingFile}
-                className="h-8 w-8"
+                className="h-8 w-8 rounded-lg border border-border"
               >
                 <ImagePlus className="h-4 w-4" />
               </Button>
@@ -318,7 +343,7 @@ export function ChatPanel() {
                 title="上传文档 (docx, txt, md)"
                 onClick={handleDocumentUpload}
                 disabled={isStreaming || isProcessingFile}
-                className="h-8 w-8"
+                className="h-8 w-8 rounded-lg border border-border"
               >
                 <FileText className="h-4 w-4" />
               </Button>
@@ -333,7 +358,7 @@ export function ChatPanel() {
               onClick={() => handleSend()}
               disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
               size="sm"
-              className="h-8"
+              className="h-8 rounded-lg border border-surface/30"
             >
               <Send className="h-4 w-4 mr-1" />
             </Button>

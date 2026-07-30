@@ -111,12 +111,12 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
             </div>
           </div>
           {/* Tips 区域 */}
-          <div className="rounded-xl bg-muted/50 p-3">
+          <div className="rounded-xl border border-border bg-background p-3">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
               <span>💡</span>
               <span>{ENGINE_TIPS[engine].title} 特点</span>
             </div>
-            <ul className="space-y-1 text-xs text-muted-foreground">
+            <ul className="space-y-1 text-xs text-muted">
               {ENGINE_TIPS[engine].features.map((feature, index) => (
                 <li key={index} className="flex items-start gap-2">
                   <span className="mt-0.5 text-primary">•</span>

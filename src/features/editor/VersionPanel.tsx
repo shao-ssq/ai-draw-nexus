@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { RotateCcw, Clock,ArrowRightToLine } from 'lucide-react'
+import { RotateCcw, Clock, PanelRightClose } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useEditorStore } from '@/stores/editorStore'
 import { VersionRepository } from '@/services/versionRepository'
 import type { VersionHistory } from '@/types'
 
-export function VersionPanel() {
+interface VersionPanelProps {
+  onCollapse?: () => void
+}
+
+export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
   const [versions, setVersions] = useState<VersionHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -53,10 +57,20 @@ export function VersionPanel() {
       {/* Header */}
       <div className="flex justify-between items-center border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-        <ArrowRightToLine className="h-4 w-4" />
         <h2 className="font-medium text-primary">版本历史</h2>
         </div>
-        <p className="text-xs text-muted">{versions.length} 个版本</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted">{versions.length} 个版本</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="收起版本历史"
+            onClick={onCollapse}
+            className="rounded-lg border border-[#e5e7eb]"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Version List */}

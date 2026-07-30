@@ -61,7 +61,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 min-w-[8rem] overflow-hidden border border-border bg-surface p-1 text-primary shadow-md',
+        'z-50 min-w-[8rem] overflow-hidden rounded-xl border border-[#e5e7eb] bg-surface p-1 text-primary shadow-md',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -84,7 +84,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center px-2 py-1.5 text-sm outline-none',
+      'relative flex cursor-default select-none items-center rounded-lg px-2 py-1.5 text-sm outline-none',
       'transition-colors focus:bg-border focus:text-primary',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
@@ -102,7 +102,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center py-1.5 pl-8 pr-2 text-sm outline-none',
+      'relative flex cursor-default select-none items-center rounded-lg py-1.5 pl-8 pr-2 text-sm outline-none',
       'transition-colors focus:bg-border focus:text-primary',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
@@ -127,7 +127,7 @@ const DropdownMenuRadioItem = React.forwardRef<
   <DropdownMenuPrimitive.RadioItem
     ref={ref}
     className={cn(
-      'relative flex cursor-default select-none items-center py-1.5 pl-8 pr-2 text-sm outline-none',
+      'relative flex cursor-default select-none items-center rounded-lg py-1.5 pl-8 pr-2 text-sm outline-none',
       'transition-colors focus:bg-border focus:text-primary',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className

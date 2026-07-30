@@ -228,10 +228,10 @@ export function HomePage() {
                       <div key={engine.value} className="group relative">
                         <button
                           onClick={() => setSelectedEngine(engine.value)}
-                          className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors ${
                             active
-                              ? 'bg-[#e5e7eb] text-[#111827]'
-                              : 'bg-[#f3f4f6] text-[#374151] hover:bg-[#e5e7eb]'
+                              ? 'border-[#9ca3af] bg-[#d1d5db] text-[#111827]'
+                              : 'border-border bg-[#f3f4f6] text-[#374151] hover:bg-[#e5e7eb]'
                           }`}
                         >
                           <span className={`h-1.5 w-1.5 rounded-full ${dotColor[engine.value]}`} />

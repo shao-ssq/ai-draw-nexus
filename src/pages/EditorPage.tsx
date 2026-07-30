@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Menu, History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText } from 'lucide-react'
+import { Menu, History, Pencil, Check, X, Plus, FolderOpen, Home, Save, Download, Image, Code, FileText, PanelLeftOpen } from 'lucide-react'
 import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
@@ -17,17 +17,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/Dropdown'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/Tooltip'
+import { TooltipProvider } from '@/components/ui/Tooltip'
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false)
+  const [isChatPanelOpen, setIsChatPanelOpen] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editedTitle, setEditedTitle] = useState('')
@@ -197,27 +193,27 @@ export function EditorPage() {
       <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-4">
           <div className="relative" ref={menuRef}>
-            <Button variant="ghost" size="icon" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <Button variant="ghost" size="icon" className="rounded-lg border border-[#e5e7eb]" onClick={() => setIsMenuOpen(!isMenuOpen)}>
               <Menu className="h-4 w-4" />
             </Button>
             {isMenuOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-md border border-border bg-surface py-1 shadow-lg">
+              <div className="absolute left-0 top-full z-50 mt-1 w-40 origin-top-left rounded-xl border border-[#e5e7eb] bg-surface p-1 shadow-lg animate-in fade-in-0 zoom-in-95">
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary transition-colors hover:bg-border"
                   onClick={handleNewProject}
                 >
                   <Plus className="h-4 w-4" />
                   新建项目
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary transition-colors hover:bg-border"
                   onClick={handleProjectManagement}
                 >
                   <FolderOpen className="h-4 w-4" />
                   项目管理
                 </button>
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-muted/50"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-primary transition-colors hover:bg-border"
                   onClick={handleGoHome}
                 >
                   <Home className="h-4 w-4" />
@@ -249,7 +245,7 @@ export function EditorPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="h-6 w-6 rounded-md border border-[#e5e7eb]"
                   onClick={handleStartEditTitle}
                 >
                   <Pencil className="h-3 w-3" />
@@ -269,17 +265,12 @@ export function EditorPage() {
         <div className="flex items-center gap-2">
           {/* Export dropdown */}
           <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-1.5">
-                    <Download className="h-4 w-4" />
-                    <span className="text-xs">导出</span>
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>导出图表</TooltipContent>
-            </Tooltip>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1.5 rounded-lg border border-[#e5e7eb]">
+                <Download className="h-4 w-4" />
+                <span className="text-xs">导出</span>
+              </Button>
+            </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuRadioGroup>
                 <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
@@ -299,20 +290,15 @@ export function EditorPage() {
           </DropdownMenu>
 
           {/* Source Code button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => canvasRef.current?.toggleSourceCode()}
-                className="gap-1.5"
-              >
-                <Code className="h-4 w-4" />
-                <span className="text-xs">源码</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>查看源码</TooltipContent>
-          </Tooltip>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => canvasRef.current?.toggleSourceCode()}
+            className="gap-1.5 rounded-lg border border-[#e5e7eb]"
+          >
+            <Code className="h-4 w-4" />
+            <span className="text-xs">源码</span>
+          </Button>
 
           <div className="mx-1 h-4 w-px bg-border" />
 
@@ -321,6 +307,7 @@ export function EditorPage() {
             size="sm"
             onClick={handleSaveVersion}
             disabled={!hasUnsavedChanges}
+            className={`rounded-lg border ${hasUnsavedChanges ? 'border-surface/30' : 'border-[#e5e7eb]'}`}
           >
             <Save className="mr-2 h-4 w-4" />
             保存
@@ -329,6 +316,7 @@ export function EditorPage() {
             variant="ghost"
             size="sm"
             onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
+            className="rounded-lg border border-[#e5e7eb]"
           >
             <History className="mr-2 h-4 w-4" />
             历史版本
@@ -337,21 +325,33 @@ export function EditorPage() {
       </header>
 
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Chat Panel */}
-        <div className="w-80 flex-shrink-0 border-r border-border">
-          <ChatPanel />
-        </div>
+      <div className="flex flex-1 gap-3 overflow-hidden bg-background p-3">
+        {/* Left: Chat Panel (collapsible) */}
+        {isChatPanelOpen ? (
+          <div className="w-96 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+            <ChatPanel onCollapse={() => setIsChatPanelOpen(false)} />
+          </div>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="展开 AI 助手"
+            onClick={() => setIsChatPanelOpen(true)}
+            className="flex-shrink-0 rounded-lg border border-[#e5e7eb]"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </Button>
+        )}
 
         {/* Center: Canvas */}
-        <div className="flex-1">
+        <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
           <CanvasArea ref={canvasRef} />
         </div>
 
         {/* Right: Version Panel (collapsible) */}
         {isVersionPanelOpen && (
-          <div className="w-64 flex-shrink-0 border-l border-border">
-            <VersionPanel />
+          <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+            <VersionPanel onCollapse={() => setIsVersionPanelOpen(false)} />
           </div>
         )}
       </div>

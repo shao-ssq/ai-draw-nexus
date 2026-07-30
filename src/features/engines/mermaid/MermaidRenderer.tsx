@@ -518,8 +518,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         )}
       >
         <div className="text-center">
-          <p className="text-sm">No diagram yet</p>
-          <p className="mt-1 text-xs">Use AI to generate one</p>
+          <p className="text-sm">暂无图表</p>
+          <p className="mt-1 text-xs">使用 WeDraw 生成一个吧</p>
         </div>
       </div>
     )
@@ -688,7 +688,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
         {/* Code Panel */}
         {showCodePanel && (
-          <div className="absolute bottom-4 right-4 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
+          <div className="absolute bottom-4 right-4 w-96 max-h-[70%] flex flex-col overflow-hidden rounded-xl border border-[#e5e7eb] bg-surface shadow-lg">
             {/* Panel Header */}
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <div className="flex items-center gap-2">
@@ -704,7 +704,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                       variant="ghost"
                       size="sm"
                       onClick={handleCopyCode}
-                      className="h-7 w-7 p-0"
+                      className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                     >
                       {copied ? (
                         <Check className="h-3.5 w-3.5 text-green-500" />
@@ -719,7 +719,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowCodePanel(false)}
-                  className="h-7 w-7 p-0"
+                  className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
@@ -736,7 +736,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                 options={{
                   minimap: { enabled: false },
                   fontSize: 13,
-                  lineNumbers: 'on',
+                  lineNumbers: 'off',
                   scrollBeyondLastLine: false,
                   wordWrap: 'on',
                   automaticLayout: true,
@@ -758,7 +758,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                     size="sm"
                     onClick={handleResetCode}
                     disabled={!hasChanges}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-lg border border-[#e5e7eb]"
                   >
                     <Undo2 className="h-3.5 w-3.5" />
                     <span className="text-xs">重置</span>
@@ -773,7 +773,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
                     size="sm"
                     onClick={handleApplyCode}
                     disabled={!hasChanges || !editedCode.trim()}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-lg border border-surface/30"
                   >
                     <Play className="h-3.5 w-3.5" />
                     <span className="text-xs">应用</span>
