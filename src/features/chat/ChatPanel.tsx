@@ -1,23 +1,134 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, FileText, X, MessageSquarePlus, Loader2, CheckCircle2, Copy, Check, PanelLeftClose } from 'lucide-react'
+import {
+  Send,
+  FileText,
+  X,
+  MessageSquarePlus,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Check,
+  PanelLeftClose,
+  Sparkles,
+  RotateCw,
+} from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
 import {
-  validateImageFile,
   validateDocumentFile,
-  fileToBase64,
   parseDocument,
   selectFiles,
-  SUPPORTED_IMAGE_TYPES,
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from '@/lib/fileUtils'
-import type { Attachment, ImageAttachment, DocumentAttachment } from '@/types'
+import { MarkdownRenderer } from './MarkdownRenderer'
+import type { Attachment, DocumentAttachment, ChatMessage, EngineType } from '@/types'
+
+const ENGINE_LABEL: Record<EngineType, string> = {
+  mermaid: 'Mermaid Agent',
+  excalidraw: 'Excalidraw Agent',
+  drawio: 'DrawIO Agent',
+}
 
 interface ChatPanelProps {
   onCollapse?: () => void
+}
+
+function ProcessBox({ msg }: { msg: ChatMessage }) {
+  const { status, phaseLabel, stepInfo } = msg
+  const isActive = status === 'pending' || status === 'streaming'
+  const isError = status === 'error'
+  const isComplete = status === 'complete'
+
+  const summaryText = phaseLabel
+    || (status === 'pending' ? '等待中...'
+      : status === 'streaming' ? '绘制中...'
+        : status === 'error' ? '出错'
+          : '绘制完成')
+
+  return (
+    <details className="ai-process-box" open={isActive || isError}>
+      <summary className="ai-process-summary">
+        {isActive ? (
+          <Loader2 className="ai-spinner" />
+        ) : isError ? (
+          <AlertCircle className="h-3 w-3 text-red-500" />
+        ) : isComplete ? (
+          <CheckCircle2 className="h-3 w-3 text-green-500" />
+        ) : (
+          <Loader2 className="ai-spinner" />
+        )}
+        <span className="ai-status-text">{summaryText}</span>
+        {stepInfo && (
+          <span className="ai-status-badge">{stepInfo.current}/{stepInfo.total}</span>
+        )}
+      </summary>
+    </details>
+  )
+}
+
+function AssistantMessageCard({
+  msg,
+  onCopy,
+  copied,
+  onRegenerate,
+}: {
+  msg: ChatMessage
+  onCopy: (text: string, id: string) => void
+  copied: string | null
+  onRegenerate: () => void
+}) {
+  const isStreaming = msg.status === 'streaming' || msg.status === 'pending'
+  const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI 助手'
+
+  return (
+    <div className="ai-message-card">
+      {/* 头部 */}
+      <div className="ai-msg-header">
+        <span className="ai-avatar">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <span className="ai-sender">AI 助手</span>
+        <span className="ai-model-tag">{modelTag}</span>
+      </div>
+
+      {/* 过程状态折叠框 */}
+      <ProcessBox msg={msg} />
+
+      {/* 正文内容区 */}
+      <div className="ai-msg-body">
+        {msg.content ? (
+          <MarkdownRenderer content={msg.content} />
+        ) : isStreaming ? (
+          <p className="ai-placeholder">正在生成回复…</p>
+        ) : null}
+        {isStreaming && msg.content && (
+          <span className="stream-caret" aria-hidden />
+        )}
+      </div>
+
+      {/* 底部操作栏 */}
+      {!isStreaming && msg.content && msg.status !== 'error' && (
+        <div className="ai-msg-actions">
+          <button
+            className="ai-action-btn"
+            onClick={() => onCopy(msg.content, msg.id)}
+            type="button"
+          >
+            {copied === msg.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            <span>{copied === msg.id ? '已复制' : '复制'}</span>
+          </button>
+          <button className="ai-action-btn" onClick={onRegenerate} type="button">
+            <RotateCw className="h-3 w-3" />
+            <span>重新生成</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
@@ -69,34 +180,6 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     }
   }, [inputValue])
 
-  const handleImageUpload = async () => {
-    const files = await selectFiles(SUPPORTED_IMAGE_TYPES.join(','))
-    if (!files || files.length === 0) return
-
-    setIsProcessingFile(true)
-    try {
-      const file = files[0]
-      const validation = validateImageFile(file)
-      if (!validation.valid) {
-        showError(validation.error!)
-        return
-      }
-
-      const dataUrl = await fileToBase64(file)
-      const imageAttachment: ImageAttachment = {
-        type: 'image',
-        dataUrl,
-        fileName: file.name,
-      }
-      setAttachments((prev) => [...prev, imageAttachment])
-    } catch (err) {
-      showError('图片处理失败')
-      console.error(err)
-    } finally {
-      setIsProcessingFile(false)
-    }
-  }
-
   const handleDocumentUpload = async () => {
     const files = await selectFiles(SUPPORTED_DOCUMENT_EXTENSIONS.join(','))
     if (!files || files.length === 0) return
@@ -146,20 +229,12 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     }
   }
 
-  // 获取AI消息的状态显示
-  const getStatusDisplay = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return { text: '等待中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
-      case 'streaming':
-        return { text: '绘制中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
-      case 'complete':
-        return { text: '绘制完成', icon: <CheckCircle2 className="h-4 w-4 text-green-500" /> }
-      case 'error':
-        return { text: '出错了', icon: <X className="h-4 w-4 text-red-500" /> }
-      default:
-        return { text: '处理中...', icon: <Loader2 className="h-4 w-4 animate-spin" /> }
-    }
+  // 重新生成：找到最后一条用户消息并以其内容重新触发
+  const handleRegenerate = async () => {
+    if (isStreaming) return
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastUserMsg) return
+    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments)
   }
 
   return (
@@ -205,69 +280,47 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex mb-4 ${
-                msg.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
+              className={`mb-4 ${msg.role === 'user' ? 'flex flex-col items-end' : 'flex justify-start'}`}
             >
-              {/* Content */}
-              <div
-                className={`max-w-[80%] px-3 py-2 ${
-                  msg.role === 'user'
-                    ? 'rounded-2xl rounded-br-md bg-primary text-surface'
-                    : 'border border-border bg-background'
-                }`}
-              >
-                {/* Show attachments for user messages */}
-                {msg.role === 'user' && msg.attachments && msg.attachments.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {msg.attachments.map((att, idx) => (
-                      <div key={idx} className="text-xs opacity-80">
-                        {att.type === 'image' ? (
-                          <img
-                            src={att.dataUrl}
-                            alt={att.fileName}
-                            className="max-h-20 max-w-20 object-cover border border-surface/30"
-                          />
-                        ) : (
-                          <span className="flex items-center gap-1">
-                            <FileText className="h-3 w-3" />
-                            {att.fileName}
-                          </span>
-                        )}
+              {msg.role === 'assistant' ? (
+                <AssistantMessageCard
+                  msg={msg}
+                  onCopy={handleCopy}
+                  copied={copiedId}
+                  onRegenerate={handleRegenerate}
+                />
+              ) : (
+                <>
+                  {/* 用户消息气泡 */}
+                  <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-surface">
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {msg.attachments.map((att, idx) => (
+                          <div key={idx} className="text-xs opacity-80">
+                            <span className="flex items-center gap-1">
+                              <FileText className="h-3 w-3" />
+                              {att.fileName}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   </div>
-                )}
-                {/* AI消息使用状态板显示 */}
-                {msg.role === 'assistant' ? (
-                  msg.status === 'complete' ? (
-                    <div className="flex items-center gap-2">
-                      {getStatusDisplay(msg.status).icon}
-                      <span className="text-sm">{getStatusDisplay(msg.status).text}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      {getStatusDisplay(msg.status).icon}
-                      <span className="text-sm">{getStatusDisplay(msg.status).text}</span>
-                    </div>
-                  )
-                ) : (
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                )}
-              </div>
-              {/* 用户消息的复制按钮 */}
-              {msg.role === 'user' && (
-                <button
-                  onClick={() => handleCopy(msg.content, msg.id)}
-                  title="复制"
-                  className="ml-1 mt-1 flex h-7 w-7 flex-shrink-0 items-center justify-center self-end rounded-md border border-border text-muted transition-colors hover:bg-background hover:text-primary"
-                >
-                  {copiedId === msg.id ? (
-                    <Check className="h-3.5 w-3.5 text-green-500" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </button>
+                  {/* 用户消息的复制按钮（位于消息下方） */}
+                  <button
+                    onClick={() => handleCopy(msg.content, msg.id)}
+                    title="复制"
+                    className="mt-1 flex h-6 items-center gap-1 rounded-md border border-border px-2 text-xs text-muted transition-colors hover:bg-background hover:text-primary"
+                  >
+                    {copiedId === msg.id ? (
+                      <Check className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                    <span>{copiedId === msg.id ? '已复制' : '复制'}</span>
+                  </button>
+                </>
               )}
             </div>
           ))
@@ -284,18 +337,10 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 key={idx}
                 className="relative flex items-center gap-1 border border-border bg-background px-2 py-1 text-xs"
               >
-                {att.type === 'image' ? (
-                  <img
-                    src={att.dataUrl}
-                    alt={att.fileName}
-                    className="h-8 w-8 object-cover"
-                  />
-                ) : (
-                  <>
-                    <FileText className="h-3 w-3" />
-                    <span className="max-w-24 truncate">{att.fileName}</span>
-                  </>
-                )}
+                <>
+                  <FileText className="h-3 w-3" />
+                  <span className="max-w-24 truncate">{att.fileName}</span>
+                </>
                 <button
                   onClick={() => removeAttachment(idx)}
                   className="ml-1 text-muted hover:text-primary"
@@ -327,16 +372,6 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
           {/* Bottom toolbar inside input */}
           <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
             <div className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                title="上传图片"
-                onClick={handleImageUpload}
-                disabled={isStreaming || isProcessingFile}
-                className="h-8 w-8 rounded-lg border border-border"
-              >
-                <ImagePlus className="h-4 w-4" />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

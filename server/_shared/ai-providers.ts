@@ -1,31 +1,13 @@
-import type { Env, Message, ContentPart, AnthropicContentPart, OpenAIResponse, AnthropicResponse } from './types.js'
+import type { Env, Message, ContentPart, OpenAIResponse, AnthropicResponse } from './types.js'
 
-export function convertContentPartsToAnthropic(parts: ContentPart[]): AnthropicContentPart[] {
+/**
+ * Convert OpenAI-compatible content parts to Anthropic format.
+ * 图片上传已移除：内容仅含文本部分。
+ */
+export function convertContentPartsToAnthropic(parts: ContentPart[]): { type: 'text'; text: string }[] {
   return parts
-    .map((part) => {
-      if (part.type === 'text') {
-        return { type: 'text' as const, text: part.text || '' }
-      }
-      if (part.type === 'image_url' && part.image_url?.url) {
-        const url = part.image_url.url
-        if (url.startsWith('data:')) {
-          const matches = url.match(/^data:(image\/[^;]+);base64,(.+)$/)
-          if (matches) {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: matches[1],
-                data: matches[2],
-              },
-            }
-          }
-        }
-        return { type: 'text' as const, text: `[Image URL: ${url}]` }
-      }
-      return { type: 'text' as const, text: '' }
-    })
-    .filter((part) => part.type === 'image' || (part.type === 'text' && part.text))
+    .map((part) => ({ type: 'text' as const, text: part.text || '' }))
+    .filter((part) => part.text)
 }
 
 export async function callOpenAI(messages: Message[], env: Env): Promise<string> {

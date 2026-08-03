@@ -1,19 +1,14 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Paperclip, Send } from 'lucide-react'
+import { FileText, Send } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
-import type { EngineType, Attachment, ImageAttachment, DocumentAttachment } from '@/types'
+import type { EngineType, Attachment, DocumentAttachment } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
 import { useTypewriter } from '@/hooks/useTypewriter'
-import {
-  fileToBase64,
-  parseDocument,
-  validateImageFile,
-  SUPPORTED_IMAGE_TYPES,
-} from '@/lib/fileUtils'
+import { parseDocument } from '@/lib/fileUtils'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -47,23 +42,13 @@ export function HomePage() {
       const convertedAttachments: Attachment[] = []
 
       for (const file of attachments) {
-        if (SUPPORTED_IMAGE_TYPES.includes(file.type)) {
-          const dataUrl = await fileToBase64(file)
-          const imageAtt: ImageAttachment = {
-            type: 'image',
-            dataUrl,
-            fileName: file.name,
-          }
-          convertedAttachments.push(imageAtt)
-        } else {
-          const content = await parseDocument(file)
-          const docAtt: DocumentAttachment = {
-            type: 'document',
-            content,
-            fileName: file.name,
-          }
-          convertedAttachments.push(docAtt)
+        const content = await parseDocument(file)
+        const docAtt: DocumentAttachment = {
+          type: 'document',
+          content,
+          fileName: file.name,
         }
+        convertedAttachments.push(docAtt)
       }
 
       // 传递 prompt 和附件
@@ -160,7 +145,7 @@ export function HomePage() {
                       key={`file-${index}`}
                       className="flex items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-sm"
                     >
-                      <Paperclip className="h-3 w-3 text-muted" />
+                      <FileText className="h-3 w-3 text-muted" />
                       <span className="max-w-[150px] truncate text-primary">
                         {file.name}
                       </span>
@@ -205,7 +190,7 @@ export function HomePage() {
                 multiple
                 onChange={handleFileChange}
                 className="hidden"
-                accept="image/*,.pdf,.doc,.docx,.txt"
+                accept=".docx,.txt,.md"
               />
 
               {/* 底部工具栏 */}
@@ -255,7 +240,7 @@ export function HomePage() {
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-primary"
                     title="可上传文档一键转化为图表，或上传截图复刻图表"
                   >
-                    <Paperclip className="h-4 w-4" />
+                    <FileText className="h-4 w-4" />
                   </button>
 
                   {/* 发送按钮 */}
@@ -279,16 +264,6 @@ export function HomePage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="mb-12 w-full max-w-3xl">
-            <p className="mb-4 text-center text-sm text-muted">
-              <span className="inline-flex items-center gap-1.5">
-                支持：
-                <span>📄 上传文档，可视化阅读</span>
-                <span className="text-border">·</span>
-                <span>🖼️ 上传图片复刻图表</span>
-              </span>
-            </p>
-          </div>
         </div>
       </main>
 

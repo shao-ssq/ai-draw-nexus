@@ -20,20 +20,14 @@ export interface VersionHistory {
   timestamp: Date
 }
 
-// Attachment types for chat messages
-export interface ImageAttachment {
-  type: 'image'
-  dataUrl: string // Base64 data URL
-  fileName: string
-}
-
+// Attachment types for chat messages (documents only — image upload removed)
 export interface DocumentAttachment {
   type: 'document'
   content: string // Extracted text content
   fileName: string
 }
 
-export type Attachment = ImageAttachment | DocumentAttachment
+export type Attachment = DocumentAttachment
 
 // Chat Message (UI Content Store)
 export interface ChatMessage {
@@ -44,15 +38,18 @@ export interface ChatMessage {
   status: 'pending' | 'streaming' | 'complete' | 'error'
   avatar?: string
   attachments?: Attachment[]
+  /** 过程状态文字（绘制中/修改中/修复报错…），展示在折叠框 summary 中 */
+  phaseLabel?: string
+  /** 多步骤进度（如两阶段生成、修复重试），可选 */
+  stepInfo?: { current: number; total: number }
+  /** 生成该消息所用的引擎类型，用于显示模型标签 */
+  engineType?: EngineType
 }
 
 // Payload Message (Message Payload Store - OpenAI compatible)
 export interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text'
   text?: string
-  image_url?: {
-    url: string
-  }
 }
 
 export interface PayloadMessage {

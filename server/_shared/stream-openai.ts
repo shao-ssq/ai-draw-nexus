@@ -1,6 +1,5 @@
 import type { Env, Message } from './types.js'
 import { corsHeaders } from './cors.js'
-import { convertContentPartsToAnthropic } from './ai-providers.js'
 
 export async function streamOpenAI(messages: Message[], env: Env): Promise<Response> {
   const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')

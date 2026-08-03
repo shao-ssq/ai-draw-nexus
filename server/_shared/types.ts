@@ -11,19 +11,8 @@ export interface Message {
 }
 
 export interface ContentPart {
-  type: 'text' | 'image_url'
+  type: 'text'
   text?: string
-  image_url?: { url: string }
-}
-
-export interface AnthropicContentPart {
-  type: 'text' | 'image'
-  text?: string
-  source?: {
-    type: 'base64'
-    media_type: string
-    data: string
-  }
 }
 
 export interface ChatRequest {

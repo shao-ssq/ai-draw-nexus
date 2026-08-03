@@ -1,13 +1,11 @@
 /**
- * File upload utilities for image and document handling
+ * File upload utilities for document handling
  */
 
-// Maximum file sizes (in bytes)
-export const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
+// Maximum file size (in bytes)
 export const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024 // 5MB
 
 // Supported file types
-export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
 export const SUPPORTED_DOCUMENT_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
   'text/plain', // .txt
@@ -19,27 +17,6 @@ export const SUPPORTED_DOCUMENT_EXTENSIONS = ['.docx', '.txt', '.md']
 export interface FileValidationResult {
   valid: boolean
   error?: string
-}
-
-/**
- * 验证图片文件
- */
-export function validateImageFile(file: File): FileValidationResult {
-  if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) {
-    return {
-      valid: false,
-      error: `不支持的图片类型：${file.type}。支持的格式：PNG、JPEG、GIF、WebP`,
-    }
-  }
-
-  if (file.size > MAX_IMAGE_SIZE) {
-    return {
-      valid: false,
-      error: `图片过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：10MB`,
-    }
-  }
-
-  return { valid: true }
 }
 
 /**
@@ -73,39 +50,6 @@ export function validateDocumentFile(file: File): FileValidationResult {
   }
 
   return { valid: true }
-}
-
-/**
- * Convert file to Base64 data URL
- */
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      resolve(result)
-    }
-    reader.onerror = () => reject(new Error('Failed to read file'))
-    reader.readAsDataURL(file)
-  })
-}
-
-/**
- * Extract Base64 data from data URL
- * @param dataUrl - Full data URL (e.g., "data:image/png;base64,...")
- * @returns Just the base64 portion
- */
-export function extractBase64FromDataUrl(dataUrl: string): string {
-  const parts = dataUrl.split(',')
-  return parts.length > 1 ? parts[1] : dataUrl
-}
-
-/**
- * Get MIME type from data URL
- */
-export function getMimeTypeFromDataUrl(dataUrl: string): string {
-  const match = dataUrl.match(/^data:([^;]+);/)
-  return match ? match[1] : 'application/octet-stream'
 }
 
 /**

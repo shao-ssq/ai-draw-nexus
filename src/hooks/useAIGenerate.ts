@@ -21,54 +21,57 @@ const USE_STREAMING = true
 // Maximum retry attempts for Mermaid auto-fix
 const MAX_MERMAID_FIX_ATTEMPTS = 3
 
+// 标题截断长度
+const TITLE_MAX_LENGTH = 24
+
 /**
- * Build multimodal content from text, attachments, and optional current thumbnail
+ * 判断是否为默认占位标题（仅这类标题会被自动改名）
+ */
+function isPlaceholderTitle(title: string): boolean {
+  return title === '未命名' || title.startsWith('Untitled-')
+}
+
+/**
+ * 从用户输入派生标题：压缩空白后截取前若干字符
+ */
+function deriveTitleFromInput(input: string): string {
+  const cleaned = input.replace(/\s+/g, ' ').trim()
+  if (!cleaned) return ''
+  return cleaned.length > TITLE_MAX_LENGTH
+    ? cleaned.slice(0, TITLE_MAX_LENGTH) + '…'
+    : cleaned
+}
+
+/**
+ * Build content from text and optional document attachments.
+ * 图片上传已移除：仅支持文本与文档（docx/txt/md）附件。
  * @param text - The text content
- * @param attachments - Optional user attachments (images or documents)
- * @param currentThumbnail - Optional current diagram thumbnail for context
+ * @param attachments - Optional user document attachments
  */
 function buildMultimodalContent(
   text: string,
-  attachments?: Attachment[],
-  currentThumbnail?: string
+  attachments?: Attachment[]
 ): string | ContentPart[] {
   const hasAttachments = attachments && attachments.length > 0
-  const hasThumbnail = currentThumbnail && currentThumbnail.trim() !== ''
 
-  if (!hasAttachments && !hasThumbnail) {
+  if (!hasAttachments) {
     return text
   }
 
   const parts: ContentPart[] = []
-
-  // Add current thumbnail first for context (if available)
-  if (hasThumbnail) {
-    parts.push({
-      type: 'image_url',
-      image_url: { url: currentThumbnail },
-    })
-  }
 
   // Add text content
   if (text) {
     parts.push({ type: 'text', text })
   }
 
-  // Add user attachments
-  if (hasAttachments) {
-    for (const attachment of attachments) {
-      if (attachment.type === 'image') {
-        parts.push({
-          type: 'image_url',
-          image_url: { url: attachment.dataUrl },
-        })
-      } else if (attachment.type === 'document') {
-        // For documents, append the extracted text content
-        parts.push({
-          type: 'text',
-          text: `\n\n[Document: ${attachment.fileName}]\n${attachment.content}`,
-        })
-      }
+  // Add user document attachments (append extracted text)
+  for (const attachment of attachments) {
+    if (attachment.type === 'document') {
+      parts.push({
+        type: 'text',
+        text: `\n\n[Document: ${attachment.fileName}]\n${attachment.content}`,
+      })
     }
   }
 
@@ -87,7 +90,6 @@ export function useAIGenerate() {
     currentContent,
     setContentFromVersion,
     setLoading,
-    thumbnailGetter,
     setProject,
   } = useEditorStore()
 
@@ -110,6 +112,16 @@ export function useAIGenerate() {
     const engineType = currentProject.engineType
     const systemPrompt = SYSTEM_PROMPTS[engineType]
 
+    // 首次生成时，发送即根据用户输入自动改名（仅此一次，后续编辑不再触发）
+    // 必须在 AI 调用前执行，并基于 store 最新值合并，避免被后续 setProject 覆盖
+    if (isInitial && isPlaceholderTitle(currentProject.title)) {
+      const derivedTitle = deriveTitleFromInput(userInput)
+      if (derivedTitle) {
+        await ProjectRepository.update(currentProject.id, { title: derivedTitle })
+        setProject({ ...useEditorStore.getState().currentProject!, title: derivedTitle })
+      }
+    }
+
     // Add user message to UI (with attachments)
     addMessage({
       role: 'user',
@@ -123,6 +135,8 @@ export function useAIGenerate() {
       role: 'assistant',
       content: '',
       status: 'streaming',
+      phaseLabel: isInitial ? '正在生成图表' : '正在修改图表',
+      engineType,
     })
 
     setStreaming(true)
@@ -153,15 +167,16 @@ export function useAIGenerate() {
           )
         }
       } else {
-        // Single-phase for edits - pass current thumbnail for context
+        // Single-phase for edits.
+        // 不再发送缩略图：编辑 prompt 已包含完整 currentCode 源码作为上下文，
+        // 且部分 Provider/模型不支持 image_url，发送缩略图会触发 400 错误。
         finalCode = await singlePhaseGeneration(
           userInput,
           currentContent,
           engineType,
           systemPrompt,
           assistantMsgId,
-          attachments,
-          currentProject.thumbnail
+          attachments
         )
       }
 
@@ -192,10 +207,16 @@ export function useAIGenerate() {
       // Update content (AI generation auto-saves, so mark as saved)
       setContentFromVersion(finalCode)
 
-      // Update assistant message
+      // Update assistant message: 保留已流式输出的代码内容，仅切换状态
+      const streamedContent = useChatStore
+        .getState()
+        .messages.find((m) => m.id === assistantMsgId)?.content
       updateMessage(assistantMsgId, {
-        content: 'Diagram generated successfully.',
+        content: streamedContent && streamedContent.trim()
+          ? streamedContent
+          : '图表已生成，可在右侧画布查看或导出。',
         status: 'complete',
+        phaseLabel: '绘制完成',
       })
 
       // Save version
@@ -233,7 +254,8 @@ export function useAIGenerate() {
         if (thumbnail) {
           await ProjectRepository.update(currentProject.id, { thumbnail })
           // Update currentProject in store so thumbnail is visible immediately
-          setProject({ ...currentProject, thumbnail })
+          // 基于 store 最新值合并，避免覆盖此前已更新的 title
+          setProject({ ...useEditorStore.getState().currentProject!, thumbnail })
         }
       } catch (err) {
         console.error('Failed to generate thumbnail:', err)
@@ -246,11 +268,13 @@ export function useAIGenerate() {
 
     } catch (error) {
       console.error('AI generation failed:', error)
+      const errMsg = error instanceof Error ? error.message : 'Generation failed'
       updateMessage(assistantMsgId, {
-        content: `Error: ${error instanceof Error ? error.message : 'Generation failed'}`,
+        content: `生成失败：${errMsg}`,
         status: 'error',
+        phaseLabel: '出错',
       })
-      showError(error instanceof Error ? error.message : 'Generation failed')
+      showError(errMsg)
     } finally {
       setStreaming(false)
       setLoading(false)
@@ -269,8 +293,10 @@ export function useAIGenerate() {
   ): Promise<string> => {
     // Phase 1: Generate elements
     updateMessage(assistantMsgId, {
-      content: 'Phase 1/2: Generating elements...',
+      content: '',
       status: 'streaming',
+      phaseLabel: '阶段 1/2：生成元素',
+      stepInfo: { current: 1, total: 2 },
     })
 
     const phase1Prompt = buildInitialPrompt(userInput, true, 'elements')
@@ -289,7 +315,7 @@ export function useAIGenerate() {
         phase1Messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Phase 1/2: Generating elements...\n\n${accumulated}`,
+            content: accumulated,
           })
         }
       )
@@ -301,20 +327,15 @@ export function useAIGenerate() {
 
     // Phase 2: Generate links/connections
     updateMessage(assistantMsgId, {
-      content: 'Phase 2/2: Generating connections...',
+      content: '',
       status: 'streaming',
+      phaseLabel: '阶段 2/2：生成连接',
+      stepInfo: { current: 2, total: 2 },
     })
 
-    // Generate thumbnail from phase 1 elements for context
-    let phase1Thumbnail: string | undefined
-    try {
-      phase1Thumbnail = await generateThumbnail(elements, engineType)
-    } catch (err) {
-      console.error('Failed to generate phase 1 thumbnail:', err)
-    }
-
+    // Phase 2 prompt (no thumbnail-as-image: image upload removed)
     const phase2Prompt = buildInitialPrompt(userInput, true, 'links', elements)
-    const phase2Content = buildMultimodalContent(phase2Prompt, attachments, phase1Thumbnail)
+    const phase2Content = buildMultimodalContent(phase2Prompt, attachments)
     const phase2Messages: PayloadMessage[] = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: phase1Content },
@@ -329,7 +350,7 @@ export function useAIGenerate() {
         phase2Messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Phase 2/2: Generating connections...\n\n${accumulated}`,
+            content: accumulated,
           })
         }
       )
@@ -351,8 +372,9 @@ export function useAIGenerate() {
     attachments?: Attachment[]
   ): Promise<string> => {
     updateMessage(assistantMsgId, {
-      content: 'Generating diagram...',
+      content: '',
       status: 'streaming',
+      phaseLabel: '正在生成图表',
     })
 
     const prompt = buildInitialPrompt(userInput, false)
@@ -370,7 +392,7 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Generating diagram...\n\n${accumulated}`,
+            content: accumulated,
           })
         }
       )
@@ -382,8 +404,9 @@ export function useAIGenerate() {
   }
 
   /**
-   * Single-phase generation for edits
-   * @param currentThumbnail - Current diagram thumbnail for AI context
+   * Single-phase generation for edits.
+   * 编辑请求不附带缩略图：currentCode 源码已作为完整上下文，
+   * 且避免对不支持 image_url 的 Provider 触发 400。
    */
   const singlePhaseGeneration = async (
     userInput: string,
@@ -391,11 +414,10 @@ export function useAIGenerate() {
     engineType: EngineType,
     systemPrompt: string,
     assistantMsgId: string,
-    attachments?: Attachment[],
-    currentThumbnail?: string
+    attachments?: Attachment[]
   ): Promise<string> => {
     const editPrompt = buildEditPrompt(currentCode, userInput)
-    const editContent = buildMultimodalContent(editPrompt, attachments, currentThumbnail)
+    const editContent = buildMultimodalContent(editPrompt, attachments)
 
     const messages: PayloadMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -409,7 +431,7 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
-            content: `Modifying diagram...\n\n${accumulated}`,
+            content: accumulated,
           })
         }
       )
@@ -437,8 +459,10 @@ export function useAIGenerate() {
       attempts++
 
       updateMessage(assistantMsgId, {
-        content: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})...\n错误: ${currentError}`,
+        content: '',
         status: 'streaming',
+        phaseLabel: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})`,
+        stepInfo: { current: attempts, total: MAX_MERMAID_FIX_ATTEMPTS },
       })
 
       const fixPrompt = `请修复下面 Mermaid 代码中的错误，只返回修复后的代码。
@@ -458,7 +482,7 @@ export function useAIGenerate() {
           messages,
           (_chunk, accumulated) => {
             updateMessage(assistantMsgId, {
-              content: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})...\n\n${accumulated}`,
+              content: accumulated,
             })
           }
         )
