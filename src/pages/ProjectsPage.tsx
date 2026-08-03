@@ -111,17 +111,10 @@ export function ProjectsPage() {
         <div className="flex-1 px-8 py-6">
           <div className="mx-auto max-w-7xl">
             {/* Page Title & Actions */}
-            <div className="mb-8 flex items-center justify-between">
+            <div className="mb-8 flex items-center">
               <div>
                 <h1 className="text-2xl font-bold text-primary">项目列表</h1>
               </div>
-              <Button
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="rounded-full bg-primary px-6 text-surface hover:bg-primary/90"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                新建项目
-              </Button>
             </div>
 
             {/* Projects Grid */}
@@ -206,10 +199,10 @@ export function ProjectsPage() {
                         </h3>
                         <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                           project.engineType === 'excalidraw'
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
                             : project.engineType === 'drawio'
                               ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                              : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                         }`}>
                           {project.engineType.toUpperCase()}
                         </span>

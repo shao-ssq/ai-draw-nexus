@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"pnpm run dev:frontend\" \"pnpm run dev:backend\"",
+    "dev": "concurrently -k \"pnpm run dev:frontend\" \"pnpm run dev:backend\"",
     "dev:frontend": "vite",
     "dev:backend": "tsx watch server/index.ts",
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",

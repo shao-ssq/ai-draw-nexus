@@ -19,7 +19,7 @@ const ENGINE_TIPS: Record<EngineType, { title: string; features: string[] }> = {
     title: 'Mermaid',
     features: [
       '基于文本的图表生成，使用简洁的语法,适合快速绘制结构化图表',
-      '支持流程图、时序图、甘特图、ER图等多种图表,可直接嵌入 Markdown',
+      '支持流程图、时序图、甘特图、ER图等多种图表，可直接嵌入 Markdown',
     ],
   },
   excalidraw: {

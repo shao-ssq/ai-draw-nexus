@@ -190,7 +190,8 @@ export function EditorPage() {
     <TooltipProvider>
     <div className="flex h-screen flex-col bg-background">
       {/* Toolbar */}
-      <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
+      <header className="relative flex h-14 items-center border-b border-border bg-surface px-4">
+        {/* Left: Menu */}
         <div className="flex items-center gap-4">
           <div className="relative" ref={menuRef}>
             <Button variant="ghost" size="icon" className="rounded-lg border border-[#e5e7eb]" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -222,7 +223,11 @@ export function EditorPage() {
               </div>
             )}
           </div>
-          <div>
+        </div>
+
+        {/* Center: Title / Edit / Engine Type */}
+        <div className="pointer-events-none absolute inset-x-0 flex items-center justify-center">
+          <div className="pointer-events-auto">
             {isEditingTitle ? (
               <div className="flex items-center gap-2">
                 <Input
@@ -242,27 +247,30 @@ export function EditorPage() {
             ) : (
               <div className="flex items-center gap-2">
                 <h1 className="font-medium text-primary">{currentProject.title}</h1>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 rounded-md border border-[#e5e7eb]"
-                  onClick={handleStartEditTitle}
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     currentProject.engineType === 'excalidraw'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                      : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
+                      : currentProject.engineType === 'drawio'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                   }`}>
                   {currentProject.engineType.toUpperCase()}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleStartEditTitle}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right: Actions */}
+        <div className="ml-auto flex items-center gap-2">
           {/* Export dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
