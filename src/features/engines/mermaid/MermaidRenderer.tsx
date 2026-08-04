@@ -578,7 +578,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
               <DropdownMenuRadioGroup value={layout} onValueChange={handleLayoutChange}>
                 <DropdownMenuRadioItem value="dagre">Dagre (默认)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="elk">ELK (层次化)</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="tidy-tree">Tidy Tree (思维导图专用)</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -620,46 +619,45 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
           <div className="mx-1 h-4 w-px bg-border" />
 
-          {/* Zoom controls */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleZoomOut}>
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>缩小</TooltipContent>
-          </Tooltip>
+          {/* Zoom controls - 靠右对齐 */}
+          <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={handleZoomOut}>
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>缩小</TooltipContent>
+            </Tooltip>
 
-          <span className="min-w-[3rem] text-center text-xs text-muted">
-            {Math.round(scale * 100)}%
-          </span>
+            <span className="min-w-[3rem] text-center text-xs text-muted">
+              {Math.round(scale * 100)}%
+            </span>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleZoomIn}>
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>放大</TooltipContent>
-          </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={handleZoomIn}>
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>放大</TooltipContent>
+            </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={handleResetView}>
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>重置视图</TooltipContent>
-          </Tooltip>
-
-
-
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={handleResetView}>
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>重置视图</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Diagram container */}
         <div
           ref={diagramContainerRef}
-          className="flex-1 overflow-hidden"
+          className="relative flex-1 overflow-hidden"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -676,14 +674,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             }}
             dangerouslySetInnerHTML={{ __html: svg }}
           />
-        </div>
 
-        {/* Zoom hint */}
-        <div className={cn(
-          "absolute bottom-2 right-2 text-xs text-muted opacity-60",
-          showCodePanel && "right-[340px]"
-        )}>
-          滚轮滚动 | Ctrl+滚轮缩放 | 拖拽平移
+          {/* Zoom hint */}
+          <div className="pointer-events-none absolute top-2 right-2 text-xs text-muted opacity-60">
+            滚轮滚动 | Ctrl+滚轮缩放 | 拖拽平移
+          </div>
         </div>
 
         {/* Code Panel */}

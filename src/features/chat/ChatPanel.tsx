@@ -37,7 +37,7 @@ interface ChatPanelProps {
   onCollapse?: () => void
 }
 
-function ProcessBox({ msg }: { msg: ChatMessage }) {
+function ProcessChip({ msg }: { msg: ChatMessage }) {
   const { status, phaseLabel, stepInfo } = msg
   const isActive = status === 'pending' || status === 'streaming'
   const isError = status === 'error'
@@ -50,23 +50,21 @@ function ProcessBox({ msg }: { msg: ChatMessage }) {
           : '绘制完成')
 
   return (
-    <details className="ai-process-box" open={isActive || isError}>
-      <summary className="ai-process-summary">
-        {isActive ? (
-          <Loader2 className="ai-spinner" />
-        ) : isError ? (
-          <AlertCircle className="h-3 w-3 text-red-500" />
-        ) : isComplete ? (
-          <CheckCircle2 className="h-3 w-3 text-green-500" />
-        ) : (
-          <Loader2 className="ai-spinner" />
-        )}
-        <span className="ai-status-text">{summaryText}</span>
-        {stepInfo && (
-          <span className="ai-status-badge">{stepInfo.current}/{stepInfo.total}</span>
-        )}
-      </summary>
-    </details>
+    <span className={`ai-status-chip ${isError ? 'is-error' : isComplete ? 'is-complete' : 'is-active'}`}>
+      {isActive ? (
+        <Loader2 className="ai-spinner" />
+      ) : isError ? (
+        <AlertCircle className="h-3 w-3" />
+      ) : isComplete ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <Loader2 className="ai-spinner" />
+      )}
+      <span className="ai-status-text">{summaryText}</span>
+      {stepInfo && (
+        <span className="ai-status-badge">{stepInfo.current}/{stepInfo.total}</span>
+      )}
+    </span>
   )
 }
 
@@ -82,7 +80,7 @@ function AssistantMessageCard({
   onRegenerate: () => void
 }) {
   const isStreaming = msg.status === 'streaming' || msg.status === 'pending'
-  const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI 助手'
+  const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI Agent'
 
   return (
     <div className="ai-message-card">
@@ -91,17 +89,14 @@ function AssistantMessageCard({
         <span className="ai-avatar">
           <Sparkles className="h-4 w-4" />
         </span>
-        <span className="ai-sender">AI 助手</span>
         <span className="ai-model-tag">{modelTag}</span>
+        <ProcessChip msg={msg} />
       </div>
-
-      {/* 过程状态折叠框 */}
-      <ProcessBox msg={msg} />
 
       {/* 正文内容区 */}
       <div className="ai-msg-body">
         {msg.content ? (
-          <MarkdownRenderer content={msg.content} />
+          <MarkdownRenderer content={msg.content} engineType={msg.engineType} />
         ) : isStreaming ? (
           <p className="ai-placeholder">正在生成回复…</p>
         ) : null}
@@ -137,6 +132,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const prevMsgCountRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
 
@@ -159,7 +155,10 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // 历史记录批量加载（条数骤增 >1）时直接跳到底部，流式增量时平滑滚动
+    const jumped = messages.length - prevMsgCountRef.current > 1
+    prevMsgCountRef.current = messages.length
+    messagesEndRef.current?.scrollIntoView({ behavior: jumped ? 'auto' : 'smooth' })
   }, [messages])
 
   // Handle initial prompt from Quick Start (Path A)

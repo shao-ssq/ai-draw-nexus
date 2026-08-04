@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronRight, ChevronDown } from 'lucide-react'
 
 /**
  * 轻量级 Markdown 渲染器，支持流式输出。
  * - 段落 / 空行
  * - 行内 `code`
- * - ```lang 代码块（含复制按钮）
+ * - ```lang 代码块
  * - **bold** / *italic*
  * - 无序列表 / 有序列表
  * 流式时未闭合的代码块也会被实时渲染。
@@ -16,7 +16,32 @@ interface Block {
   content: string
 }
 
-function parseBlocks(src: string): Block[] {
+/** 各引擎对应的代码语言标签 */
+const ENGINE_LANG: Record<string, string> = {
+  mermaid: 'mermaid',
+  excalidraw: 'json',
+  drawio: 'xml',
+}
+
+/**
+ * 启发式判断内容是否为裸代码（AI 系统提示禁止输出 markdown 围栏，
+ * 因此 mermaid / drawio XML / excalidraw JSON 会以纯文本形式到达，需要在此识别）。
+ */
+function looksLikeCode(src: string): boolean {
+  const trimmed = src.trim()
+  if (!trimmed) return false
+  // XML / mxCell
+  if (/^<\??mx|<mxCell|<\/mxGraphModel/i.test(trimmed)) return true
+  // JSON 数组或对象
+  if (/^[[{]/.test(trimmed)) return true
+  // Mermaid 配置指令开头（%%{init: ...}%%）
+  if (/^%%\{/.test(trimmed)) return true
+  // Mermaid 关键字开头（允许前置空行/空白）
+  if (/(^|\n)\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|quadrantChart|requirementDiagram|C4Context|sankey-beta|block-beta)\b/i.test(trimmed)) return true
+  return false
+}
+
+function parseBlocks(src: string, forceLang?: string): Block[] {
   const blocks: Block[] = []
   const lines = src.split('\n')
   let i = 0
@@ -56,6 +81,16 @@ function parseBlocks(src: string): Block[] {
     i++
   }
   flushText()
+
+  // 没有显式 ``` 围栏、但整体是裸代码（各引擎 AI 输出）：整体渲染为一个代码块
+  if (forceLang && blocks.length >= 1) {
+    const onlyText = blocks.every((b) => b.type === 'text')
+    if (onlyText && looksLikeCode(src)) {
+      const raw = blocks.map((b) => b.content).join('\n')
+      return [{ type: 'code', lang: forceLang, content: raw }]
+    }
+  }
+
   return blocks
 }
 
@@ -111,34 +146,42 @@ function TextBlock({ content }: { content: string }) {
 }
 
 function CodeBlock({ lang, content }: { lang?: string; content: string }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* ignore */
-    }
-  }
+  const [collapsed, setCollapsed] = useState(false)
   return (
-    <div className="md-code-block">
+    <div className={`md-code-block ${collapsed ? 'is-collapsed' : ''}`}>
       <div className="md-code-header">
-        <span className="md-code-lang">{lang || 'text'}</span>
-        <button className="md-copy-btn" onClick={handleCopy} type="button">
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          <span>{copied ? '已复制' : '复制'}</span>
+        <button
+          type="button"
+          className="md-code-toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+          <span className="md-code-lang">{lang || 'text'}</span>
         </button>
       </div>
-      <pre className="md-code-content">
-        <code>{content}</code>
-      </pre>
+      {!collapsed && (
+        <pre className="md-code-content">
+          <code>{content}</code>
+        </pre>
+      )}
     </div>
   )
 }
 
-export function MarkdownRenderer({ content }: { content: string }) {
-  const blocks = useMemo(() => parseBlocks(content), [content])
+export function MarkdownRenderer({
+  content,
+  engineType,
+}: {
+  content: string
+  engineType?: string
+}) {
+  const forceLang = engineType ? ENGINE_LANG[engineType] : undefined
+  const blocks = useMemo(() => parseBlocks(content, forceLang), [content, forceLang])
   return (
     <div className="markdown-body">
       {blocks.map((b, idx) =>

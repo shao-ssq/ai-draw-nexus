@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Button,
-  Input,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from '@/components/ui'
 import { ENGINES } from '@/constants'
@@ -45,21 +43,17 @@ interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {
   const navigate = useNavigate()
-  const [title, setTitle] = useState('未命名')
   const [engine, setEngine] = useState<EngineType>('mermaid')
   const [isCreating, setIsCreating] = useState(false)
 
   const handleCreate = async () => {
-    if (!title.trim()) return
-
     setIsCreating(true)
     try {
       const project = await ProjectRepository.create({
-        title: title.trim(),
+        title: '未命名',
         engineType: engine,
       })
       onOpenChange(false)
-      setTitle('未命名')
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -70,7 +64,6 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
-      setTitle('未命名')
       setEngine('mermaid')
     }
     onOpenChange(newOpen)
@@ -80,20 +73,10 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="rounded-2xl">
         <DialogHeader>
-          <DialogTitle>新建项目</DialogTitle>
+          <DialogTitle>绘图引擎</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div>
-            <label className="mb-2 block text-sm font-medium">项目名称</label>
-            <Input
-              placeholder="请输入项目名称"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded-xl"
-            />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium">引擎</label>
             <div className="flex gap-2">
               {ENGINES.map((e) => (
                 <button

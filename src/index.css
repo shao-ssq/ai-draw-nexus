@@ -90,40 +90,63 @@ body {
   border-radius: 4px;
 }
 .markdown-body .md-code-block {
-  background-color: #1e293b;
+  background-color: #f8fafc;
+  border: 1px solid var(--color-border-subtle, #e5e7eb);
   border-radius: 8px;
   overflow: hidden;
   margin: 8px 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 .markdown-body .md-code-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
-  background-color: #0f172a;
-  color: #94a3b8;
+  padding: 4px 8px;
+  background-color: #f1f5f9;
+  border-bottom: 1px solid var(--color-border-subtle, #e5e7eb);
+  color: #64748b;
   font-size: 12px;
 }
-.markdown-body .md-code-lang {
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-}
-.markdown-body .md-copy-btn {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  display: flex;
+.markdown-body .md-code-toggle {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  padding: 3px 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  padding: 2px 4px;
   border-radius: 4px;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.15s, color 0.15s;
 }
-.markdown-body .md-copy-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+.markdown-body .md-code-toggle:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+.markdown-body .md-code-lang {
+  display: inline-flex;
+  align-items: center;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+.markdown-body .md-code-block.is-collapsed {
+  /* 折叠时隐藏 header 底部分隔线 */
+  border-radius: 8px;
+}
+.markdown-body .md-code-block.is-collapsed .md-code-header {
+  border-bottom: none;
+}
+.markdown-body .md-code-content::-webkit-scrollbar {
+  height: 8px;
+}
+.markdown-body .md-code-content::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
+}
+.markdown-body .md-code-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 .markdown-body .md-code-content {
   margin: 0;
@@ -131,7 +154,7 @@ body {
   overflow-x: auto;
   font-family: "Fira Code", Consolas, Monaco, monospace;
   font-size: 12.5px;
-  color: #e2e8f0;
+  color: #1e293b;
   line-height: 1.5;
 }
 .markdown-body .md-code-content code {
@@ -191,27 +214,35 @@ body {
   border-radius: 4px;
 }
 
-/* 过程状态折叠框 */
-.ai-process-box {
-  background: #f8fafc;
-  border: 1px solid var(--color-border-subtle, #e5e7eb);
-  border-radius: 8px;
-  overflow: hidden;
-  font-size: 12px;
-}
-.ai-process-summary {
-  display: flex;
+/* 头部内联过程状态 */
+.ai-status-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  user-select: none;
-  color: var(--color-muted);
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
   font-weight: 500;
-  list-style: none;
+  padding: 2px 8px;
+  border-radius: 10px;
+  line-height: 1.4;
 }
-.ai-process-summary::-webkit-details-marker {
-  display: none;
+.ai-status-chip.is-active {
+  color: #2563eb;
+  background: #eff6ff;
+}
+.ai-status-chip.is-complete {
+  color: #16a34a;
+  background: #f0fdf4;
+}
+.ai-status-chip.is-error {
+  color: #dc2626;
+  background: #fef2f2;
+}
+.ai-status-chip .ai-status-badge {
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
 }
 .ai-spinner {
   width: 12px;
@@ -222,14 +253,7 @@ body {
   to { transform: rotate(360deg); }
 }
 .ai-status-text {
-  flex: 1;
-}
-.ai-status-badge {
-  background: #e2e8f0;
-  color: #475569;
-  font-size: 11px;
-  padding: 0 6px;
-  border-radius: 10px;
+  white-space: nowrap;
 }
 
 /* 正文 */
