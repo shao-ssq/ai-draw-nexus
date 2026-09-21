@@ -38,6 +38,13 @@ interface ExcalidrawData {
   appState?: Record<string, unknown>
 }
 
+// 默认缩放：以当前的 80% 作为新的 100%（Excalidraw 官方 zoom，value 1 = 100%）
+const DEFAULT_ZOOM = 0.8
+// NormalizedZoomValue 是 branded number 类型，updateScene 的 appState 要求该类型；
+// 用本地别名 + as 断言，避免依赖未从包入口导出的类型
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const DEFAULT_ZOOM_VALUE: any = DEFAULT_ZOOM
+
 /**
  * Fix Excalidraw bug: when line element has width === 0 or height === 0,
  * it causes rendering issues. This function fixes by setting them to 1.
@@ -113,7 +120,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
     if (!data.trim()) {
       return {
         elements: [],
-        appState: { currentItemStrokeWidth: 1 },
+        appState: { currentItemStrokeWidth: 1, zoom: { value: DEFAULT_ZOOM } },
       }
     }
 
@@ -139,6 +146,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         appState: {
           // 自由绘制默认选最细描边（thin = 1）
           currentItemStrokeWidth: 1,
+          zoom: { value: DEFAULT_ZOOM },
         },
       }
     } catch (err) {
@@ -146,7 +154,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       setError(errorMessage)
       return {
         elements: [],
-        appState: { currentItemStrokeWidth: 1 },
+        appState: { currentItemStrokeWidth: 1, zoom: { value: DEFAULT_ZOOM } },
       }
     }
   }, [data])
@@ -220,7 +228,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
         lastEmittedDataRef.current = data
         excalidrawAPI.updateScene({
           elements: restoredElements,
-          appState: { isLoading: false },
+          appState: { isLoading: false, zoom: { value: DEFAULT_ZOOM_VALUE } },
         })
       }
     } catch {

@@ -48,10 +48,10 @@ export function useToast() {
       addToast(options)
     },
     success: (description: string) => {
-      addToast({ title: 'Success', description, variant: 'default' })
+      addToast({ title: '成功', description, variant: 'default' })
     },
     error: (description: string) => {
-      addToast({ title: 'Error', description, variant: 'destructive' })
+      addToast({ title: '错误', description, variant: 'destructive' })
     },
   }
 }

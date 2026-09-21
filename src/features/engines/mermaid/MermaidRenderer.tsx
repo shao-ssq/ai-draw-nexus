@@ -280,6 +280,8 @@ const THEME_PRESETS: Record<ThemePresetId, ThemePreset> = {
 const MIN_SCALE = 0.1
 const MAX_SCALE = 5
 const SCALE_STEP = 0.1
+// 默认缩放：以当前的 80% 作为新的 100%（显示百分比以此为基准）
+const DEFAULT_SCALE = 0.8
 
 // Register layout loaders once
 let elkRegistered = false
@@ -305,7 +307,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const diagramContainerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [svg, setSvg] = useState<string>('')
-  const [scale, setScale] = useState(1)
+  const [scale, setScale] = useState(DEFAULT_SCALE)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
@@ -494,7 +496,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   }, [])
 
   const handleResetView = useCallback(() => {
-    setScale(1)
+    setScale(DEFAULT_SCALE)
     setPosition({ x: 0, y: 0 })
   }, [])
 
@@ -849,7 +851,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             </Tooltip>
 
             <span className="min-w-[2.5rem] text-center text-[11px] text-muted">
-              {Math.round(scale * 100)}%
+              {Math.round(scale / DEFAULT_SCALE * 100)}%
             </span>
 
             <Tooltip>

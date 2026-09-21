@@ -1,3 +1,4 @@
+import { useRef, useCallback } from 'react'
 import { useChatStore } from '@/stores/chatStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePayloadStore } from '@/stores/payloadStore'
@@ -40,6 +41,46 @@ function deriveTitleFromInput(input: string): string {
   return cleaned.length > TITLE_MAX_LENGTH
     ? cleaned.slice(0, TITLE_MAX_LENGTH) + '…'
     : cleaned
+}
+
+/**
+ * 从流式累积的 excalidraw JSON 文本中，增量提取已完整的顶层元素对象。
+ * 返回一个合法的 JSON 数组字符串（仅含已完整的元素），用于流式过程中实时渲染画布。
+ * 若尚无完整元素，返回 null。
+ *
+ * 原理：用括号深度状态机扫描，每当一个顶层 {...} 对象闭合（depth 1→0），
+ * 即截取该对象子串。未写完的对象（depth 未归零）会被丢弃，保证输出可解析。
+ */
+function extractPartialExcalidrawArray(src: string): string | null {
+  const start = src.indexOf('[')
+  if (start === -1) return null
+  const objs: string[] = []
+  let depth = 0
+  let inStr = false
+  let escape = false
+  let objStart = -1
+  for (let i = start + 1; i < src.length; i++) {
+    const ch = src[i]
+    if (inStr) {
+      if (escape) { escape = false; continue }
+      if (ch === '\\') { escape = true; continue }
+      if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') { inStr = true; continue }
+    if (ch === '{') {
+      if (depth === 0) objStart = i
+      depth++
+    } else if (ch === '}') {
+      depth--
+      if (depth === 0 && objStart !== -1) {
+        objs.push(src.slice(objStart, i + 1))
+        objStart = -1
+      }
+    }
+  }
+  if (objs.length === 0) return null
+  return '[' + objs.join(',') + ']'
 }
 
 /**
@@ -88,6 +129,7 @@ export function useAIGenerate() {
   const {
     currentProject,
     currentContent,
+    setContent,
     setContentFromVersion,
     setLoading,
     setProject,
@@ -95,6 +137,34 @@ export function useAIGenerate() {
 
   const { setMessages } = usePayloadStore()
   const { success, error: showError } = useToast()
+
+  // 流式实时渲染节流：excalidraw 边生成边画，限频避免频繁 updateScene 卡顿
+  const lastStreamRenderRef = useRef(0)
+
+  /**
+   * 流式累积回调：更新聊天消息内容，并对 excalidraw 增量渲染画布。
+   * excalidraw 输出为 JSON 数组，每元素独占一行；此处提取已完整的元素，
+   * 节流（≥250ms）写入 currentContent，让画布边生成边显示。
+   */
+  const handleStreamAccumulated = useCallback((
+    assistantMsgId: string,
+    engineType: EngineType,
+    accumulated: string
+  ) => {
+    updateMessage(assistantMsgId, { content: accumulated })
+    if (engineType !== 'excalidraw') return
+    const now = Date.now()
+    if (now - lastStreamRenderRef.current < 250) return
+    lastStreamRenderRef.current = now
+    const partial = extractPartialExcalidrawArray(accumulated)
+    if (!partial) return
+    try {
+      JSON.parse(partial) // 校验合法后再写入
+      setContent(partial)
+    } catch {
+      // 仍有不完整片段，跳过本次
+    }
+  }, [updateMessage, setContent])
 
   /**
    * Generate diagram using AI with streaming support
@@ -141,6 +211,8 @@ export function useAIGenerate() {
 
     setStreaming(true)
     setLoading(true)
+    // 重置流式渲染节流计时，每次生成独立计时
+    lastStreamRenderRef.current = 0
 
     try {
       let finalCode: string
@@ -264,11 +336,11 @@ export function useAIGenerate() {
       // Update project timestamp
       await ProjectRepository.update(currentProject.id, {})
 
-      success('Diagram generated successfully')
+      success('图表生成成功')
 
     } catch (error) {
       console.error('AI generation failed:', error)
-      const errMsg = error instanceof Error ? error.message : 'Generation failed'
+      const errMsg = error instanceof Error ? error.message : '生成失败'
       updateMessage(assistantMsgId, {
         content: `生成失败：${errMsg}`,
         status: 'error',
@@ -377,7 +449,7 @@ export function useAIGenerate() {
       phaseLabel: '正在生成图表',
     })
 
-    const prompt = buildInitialPrompt(userInput, false)
+    const prompt = buildInitialPrompt(userInput, false, undefined, undefined, engineType)
     const content = buildMultimodalContent(prompt, attachments)
 
     const messages: PayloadMessage[] = [
@@ -391,9 +463,7 @@ export function useAIGenerate() {
       const response = await aiService.streamChat(
         messages,
         (_chunk, accumulated) => {
-          updateMessage(assistantMsgId, {
-            content: accumulated,
-          })
+          handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         }
       )
       return extractCode(response, engineType)
@@ -430,9 +500,7 @@ export function useAIGenerate() {
       const response = await aiService.streamChat(
         messages,
         (_chunk, accumulated) => {
-          updateMessage(assistantMsgId, {
-            content: accumulated,
-          })
+          handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         }
       )
       return extractCode(response, engineType)
