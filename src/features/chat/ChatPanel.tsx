@@ -11,7 +11,6 @@ import {
   Check,
   PanelLeftClose,
   Sparkles,
-  RotateCw,
 } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
@@ -70,17 +69,14 @@ function ProcessChip({ msg }: { msg: ChatMessage }) {
 
 function AssistantMessageCard({
   msg,
-  onCopy,
-  copied,
   onRegenerate,
 }: {
   msg: ChatMessage
-  onCopy: (text: string, id: string) => void
-  copied: string | null
   onRegenerate: () => void
 }) {
   const isStreaming = msg.status === 'streaming' || msg.status === 'pending'
   const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI Agent'
+  const showRegenerate = !isStreaming && !!msg.content && msg.status !== 'error'
 
   return (
     <div className="ai-message-card">
@@ -96,7 +92,13 @@ function AssistantMessageCard({
       {/* 正文内容区 */}
       <div className="ai-msg-body">
         {msg.content ? (
-          <MarkdownRenderer content={msg.content} engineType={msg.engineType} />
+          <MarkdownRenderer
+            content={msg.content}
+            engineType={msg.engineType}
+            isStreaming={isStreaming}
+            showRegenerate={showRegenerate}
+            onRegenerate={onRegenerate}
+          />
         ) : isStreaming ? (
           <p className="ai-placeholder">正在生成回复…</p>
         ) : null}
@@ -104,24 +106,6 @@ function AssistantMessageCard({
           <span className="stream-caret" aria-hidden />
         )}
       </div>
-
-      {/* 底部操作栏 */}
-      {!isStreaming && msg.content && msg.status !== 'error' && (
-        <div className="ai-msg-actions">
-          <button
-            className="ai-action-btn"
-            onClick={() => onCopy(msg.content, msg.id)}
-            type="button"
-          >
-            {copied === msg.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            <span>{copied === msg.id ? '已复制' : '复制'}</span>
-          </button>
-          <button className="ai-action-btn" onClick={onRegenerate} type="button">
-            <RotateCw className="h-3 w-3" />
-            <span>重新生成</span>
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -279,13 +263,11 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`mb-4 ${msg.role === 'user' ? 'flex flex-col items-end' : 'flex justify-start'}`}
+              className={`mb-4 ${msg.role === 'user' ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}
             >
               {msg.role === 'assistant' ? (
                 <AssistantMessageCard
                   msg={msg}
-                  onCopy={handleCopy}
-                  copied={copiedId}
                   onRegenerate={handleRegenerate}
                 />
               ) : (

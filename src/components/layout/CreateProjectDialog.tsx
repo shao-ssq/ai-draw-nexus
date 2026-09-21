@@ -84,7 +84,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
                   onClick={() => setEngine(e.value)}
                   className={`flex-1 rounded-xl border p-3 text-sm transition-colors ${
                     engine === e.value
-                      ? 'border-primary bg-primary text-surface'
+                      ? 'border-primary bg-[#f3f4f6] font-medium text-primary'
                       : 'border-border bg-surface text-primary hover:border-primary'
                   }`}
                 >

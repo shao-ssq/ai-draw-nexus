@@ -130,7 +130,7 @@ export function EditorPage() {
       await ProjectRepository.update(currentProject.id, { title: editedTitle.trim() })
       setProject({ ...currentProject, title: editedTitle.trim() })
       setIsEditingTitle(false)
-      success('Title updated')
+      success('标题已更新')
     } catch (error) {
       console.error('Failed to update title:', error)
     }
@@ -192,12 +192,12 @@ export function EditorPage() {
     <TooltipProvider>
     <div className="flex h-screen flex-col bg-background">
       {/* Toolbar */}
-      <header className="relative flex h-14 items-center border-b border-border bg-surface px-4">
+      <header className="relative flex h-11 items-center border-b border-border bg-surface px-4">
         {/* Left: Menu */}
         <div className="flex items-center gap-4">
           <div className="relative" ref={menuRef}>
-            <Button variant="ghost" size="icon" className="rounded-lg border border-[#e5e7eb]" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              <Menu className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg border border-[#e5e7eb]" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+              <Menu className="h-3.5 w-3.5" />
             </Button>
             {isMenuOpen && (
               <div className="absolute left-0 top-full z-50 mt-1 w-40 origin-top-left rounded-xl border border-[#e5e7eb] bg-surface p-1 shadow-lg animate-in fade-in-0 zoom-in-95">
@@ -237,19 +237,19 @@ export function EditorPage() {
                   value={editedTitle}
                   onChange={(e) => setEditedTitle(e.target.value)}
                   onKeyDown={handleTitleKeyDown}
-                  className="h-8 w-48"
+                  className="h-7 w-44 text-sm"
                 />
-                <Button variant="ghost" size="icon" onClick={handleSaveTitle}>
-                  <Check className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSaveTitle}>
+                  <Check className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={handleCancelEditTitle}>
-                  <X className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCancelEditTitle}>
+                  <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <h1 className="font-medium text-primary">{currentProject.title}</h1>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                <h1 className="text-sm font-medium text-primary">{currentProject.title}</h1>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                     currentProject.engineType === 'excalidraw'
                       ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
                       : currentProject.engineType === 'drawio'
@@ -261,10 +261,10 @@ export function EditorPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7"
                   onClick={handleStartEditTitle}
                 >
-                  <Pencil className="h-4 w-4" />
+                  <Pencil className="h-3.5 w-3.5" />
                 </Button>
               </div>
             )}
@@ -276,9 +276,9 @@ export function EditorPage() {
           {/* Export dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1.5 rounded-lg border border-[#e5e7eb]">
-                <Download className="h-4 w-4" />
-                <span className="text-xs">导出</span>
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5">
+                <Download className="h-3.5 w-3.5" />
+                <span className="text-[11px]">导出</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -304,10 +304,10 @@ export function EditorPage() {
             variant="ghost"
             size="sm"
             onClick={() => canvasRef.current?.toggleSourceCode()}
-            className="gap-1.5 rounded-lg border border-[#e5e7eb]"
+            className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5"
           >
-            <Code className="h-4 w-4" />
-            <span className="text-xs">源码</span>
+            <Code className="h-3.5 w-3.5" />
+            <span className="text-[11px]">源码</span>
           </Button>
 
           <div className="mx-1 h-4 w-px bg-border" />
@@ -317,41 +317,46 @@ export function EditorPage() {
             size="sm"
             onClick={handleSaveVersion}
             disabled={!hasUnsavedChanges}
-            className={`rounded-lg border ${hasUnsavedChanges ? 'border-surface/30' : 'border-[#e5e7eb]'}`}
+            className={`h-8 rounded-lg border px-2.5 ${hasUnsavedChanges ? 'border-surface/30' : 'border-[#e5e7eb]'}`}
           >
-            <Save className="mr-2 h-4 w-4" />
-            保存
+            <Save className="mr-1.5 h-3.5 w-3.5" />
+            <span className="text-[11px]">保存</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setIsVersionPanelOpen(!isVersionPanelOpen)}
-            className="rounded-lg border border-[#e5e7eb]"
+            className="h-8 rounded-lg border border-[#e5e7eb] px-2.5"
           >
-            <History className="mr-2 h-4 w-4" />
-            历史版本
+            <History className="mr-1.5 h-3.5 w-3.5" />
+            <span className="text-[11px]">历史版本</span>
           </Button>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex flex-1 gap-3 overflow-hidden bg-background p-3">
-        {/* Left: Chat Panel (collapsible) */}
-        {isChatPanelOpen ? (
-          <div className="w-96 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        {/* Left: Chat Panel (collapsible with width transition) */}
+        <div
+          className={`flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm transition-[width] duration-300 ease-in-out ${
+            isChatPanelOpen ? 'w-96' : 'w-12'
+          }`}
+        >
+          {isChatPanelOpen ? (
             <ChatPanel onCollapse={() => setIsChatPanelOpen(false)} />
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            title="展开 AI 助手"
-            onClick={() => setIsChatPanelOpen(true)}
-            className="flex-shrink-0 rounded-lg border border-[#e5e7eb]"
-          >
-            <PanelLeftOpen className="h-4 w-4" />
-          </Button>
-        )}
+          ) : (
+            <button
+              onClick={() => setIsChatPanelOpen(true)}
+              title="展开 AI 助手"
+              className="flex h-full w-full flex-col items-center justify-start gap-2 pt-3 text-muted transition-colors hover:text-primary"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+              <span className="writing-vertical text-[11px] tracking-widest" style={{ writingMode: 'vertical-rl' }}>
+                AI 助手
+              </span>
+            </button>
+          )}
+        </div>
 
         {/* Center: Canvas */}
         <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm">

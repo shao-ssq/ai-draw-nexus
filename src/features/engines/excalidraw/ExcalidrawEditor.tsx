@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { Excalidraw, exportToBlob, exportToSvg, getSceneVersion, restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw'
+import { MainMenu } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import Editor from '@monaco-editor/react'
@@ -104,11 +105,16 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   const skipProgrammaticChangeRef = useRef(false)
   const onChangeRef = useRef(onChange)
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  // 记住本组件最后一次 onChange 发出的内容，用于区分“外部新数据”与“自身回流”
+  const lastEmittedDataRef = useRef<string>(data)
 
   // Parse initial data - supports both array format and object format
   const initialData = useMemo<ExcalidrawData | null>(() => {
     if (!data.trim()) {
-      return { elements: [] }
+      return {
+        elements: [],
+        appState: { currentItemStrokeWidth: 1 },
+      }
     }
 
     try {
@@ -128,11 +134,20 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       // Prepare elements with proper binding handling
       const restoredElements = prepareExcalidrawElements(elementsData)
 
-      return { elements: restoredElements }
+      return {
+        elements: restoredElements,
+        appState: {
+          // 自由绘制默认选最细描边（thin = 1）
+          currentItemStrokeWidth: 1,
+        },
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid JSON'
       setError(errorMessage)
-      return { elements: [] }
+      return {
+        elements: [],
+        appState: { currentItemStrokeWidth: 1 },
+      }
     }
   }, [data])
 
@@ -182,6 +197,10 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
   useEffect(() => {
     if (!excalidrawAPI || !data.trim()) return
 
+    // 跳过自身回流：data 与本组件最后一次发出的内容一致，说明是 onChange 触发的
+    // 父组件 state 更新回流，不是外部新数据，不应覆盖画布（否则用户刚画的笔画会被冲掉）
+    if (data === lastEmittedDataRef.current) return
+
     try {
       const parsed = JSON.parse(data)
       const elementsData = Array.isArray(parsed) ? parsed : parsed.elements
@@ -198,6 +217,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
       if (currentVersion !== newVersion) {
         skipProgrammaticChangeRef.current = true
+        lastEmittedDataRef.current = data
         excalidrawAPI.updateScene({
           elements: restoredElements,
           appState: { isLoading: false },
@@ -251,6 +271,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
       // Notify parent of change
       if (onChange) {
+        lastEmittedDataRef.current = editedCode
         onChange(editedCode)
       }
       setHasChanges(false)
@@ -412,7 +433,10 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       const exportData: ExcalidrawData = {
         elements: sceneElements as ExcalidrawElementAny[],
       }
-      onChangeRef.current(JSON.stringify(exportData, null, 2))
+      const emitted = JSON.stringify(exportData, null, 2)
+      // 记住本组件发出的内容，用于让“外部数据更新”effect 识别并跳过自身回流
+      lastEmittedDataRef.current = emitted
+      onChangeRef.current(emitted)
     }
   }, [])
 
@@ -437,7 +461,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
 
   return (
     <TooltipProvider>
-      <div className={cn('relative h-full w-full', className)}>
+      <div className={cn('excalidraw-wrapper relative h-full w-full', className)}>
         
 
         {/* Excalidraw Canvas */}
@@ -445,6 +469,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
           initialData={initialData}
           onChange={handleChange}
           excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          langCode="zh-CN"
           theme="light"
           UIOptions={{
             canvasActions: {
@@ -453,11 +478,21 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
               saveAsImage: false,
             },
           }}
-        />
+        >
+          {/* 自定义主菜单：移除“Find on canvas”(SearchMenu)、“帮助”(Help)、“Excalidraw links”(Socials) */}
+          <MainMenu>
+            <MainMenu.DefaultItems.LoadScene />
+            <MainMenu.DefaultItems.SaveToActiveFile />
+            <MainMenu.DefaultItems.ClearCanvas />
+            <MainMenu.Separator />
+            <MainMenu.DefaultItems.ToggleTheme />
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+          </MainMenu>
+        </Excalidraw>
 
         {/* Code Panel */}
         {showCodePanel && (
-          <div className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
+          <div className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col overflow-hidden rounded-xl border border-[#e5e7eb] bg-surface shadow-lg select-text">
             {/* Panel Header */}
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <div className="flex items-center gap-2">
@@ -473,7 +508,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
                       variant="ghost"
                       size="sm"
                       onClick={handleCopyCode}
-                      className="h-7 w-7 p-0"
+                      className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                     >
                       {copied ? (
                         <Check className="h-3.5 w-3.5 text-green-500" />
@@ -488,7 +523,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowCodePanel(false)}
-                  className="h-7 w-7 p-0"
+                  className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
@@ -527,7 +562,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
                     size="sm"
                     onClick={handleResetCode}
                     disabled={!hasChanges}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-lg border border-[#e5e7eb]"
                   >
                     <Undo2 className="h-3.5 w-3.5" />
                     <span className="text-xs">重置</span>
@@ -542,7 +577,7 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
                     size="sm"
                     onClick={handleApplyCode}
                     disabled={!hasChanges || !editedCode.trim()}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-lg border border-surface/30"
                   >
                     <Play className="h-3.5 w-3.5" />
                     <span className="text-xs">应用</span>

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { ChevronRight, ChevronDown, Copy, Check, RotateCw } from 'lucide-react'
 
 /**
  * 轻量级 Markdown 渲染器，支持流式输出。
@@ -145,8 +145,40 @@ function TextBlock({ content }: { content: string }) {
   return <div className="md-text" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-function CodeBlock({ lang, content }: { lang?: string; content: string }) {
+/** 超过该行数的 mermaid / excalidraw 代码块默认折叠 */
+const COLLAPSE_THRESHOLD = 40
+
+function CodeBlock({
+  lang,
+  content,
+  autoCollapse,
+  showRegenerate,
+  onRegenerate,
+}: {
+  lang?: string
+  content: string
+  autoCollapse?: boolean
+  showRegenerate?: boolean
+  onRegenerate?: () => void
+}) {
   const [collapsed, setCollapsed] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  // 流式结束后，若 autoCollapse 为真则折叠（用户手动展开后不再自动收起）
+  useEffect(() => {
+    if (autoCollapse) setCollapsed(true)
+  }, [autoCollapse])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      console.error('复制失败', err)
+    }
+  }
+
   return (
     <div className={`md-code-block ${collapsed ? 'is-collapsed' : ''}`}>
       <div className="md-code-header">
@@ -163,6 +195,32 @@ function CodeBlock({ lang, content }: { lang?: string; content: string }) {
           )}
           <span className="md-code-lang">{lang || 'text'}</span>
         </button>
+        <div className="md-code-actions">
+          {showRegenerate && onRegenerate && (
+            <button
+              type="button"
+              className="md-code-regenerate"
+              onClick={onRegenerate}
+              title="重新生成"
+            >
+              <RotateCw className="h-3 w-3" />
+              <span>重新生成</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="md-code-copy"
+            onClick={handleCopy}
+            title="复制代码"
+          >
+            {copied ? (
+              <Check className="h-3 w-3 text-green-500" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+            <span>{copied ? '已复制' : '复制'}</span>
+          </button>
+        </div>
       </div>
       {!collapsed && (
         <pre className="md-code-content">
@@ -176,17 +234,45 @@ function CodeBlock({ lang, content }: { lang?: string; content: string }) {
 export function MarkdownRenderer({
   content,
   engineType,
+  isStreaming,
+  showRegenerate,
+  onRegenerate,
 }: {
   content: string
   engineType?: string
+  isStreaming?: boolean
+  showRegenerate?: boolean
+  onRegenerate?: () => void
 }) {
   const forceLang = engineType ? ENGINE_LANG[engineType] : undefined
   const blocks = useMemo(() => parseBlocks(content, forceLang), [content, forceLang])
+
+  // 找到最后一个代码块的索引，重新生成按钮只挂在那里
+  const lastCodeIdx = useMemo(() => {
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === 'code') return i
+    }
+    return -1
+  }, [blocks])
+
   return (
     <div className="markdown-body">
       {blocks.map((b, idx) =>
         b.type === 'code' ? (
-          <CodeBlock key={idx} lang={b.lang} content={b.content} />
+          <CodeBlock
+            key={idx}
+            lang={b.lang}
+            content={b.content}
+            autoCollapse={
+              // mermaid / excalidraw 代码超过阈值行数时折叠
+              // 流式生成中不折叠，避免打断观看；生成完成后再折叠
+              !isStreaming &&
+              (engineType === 'mermaid' || engineType === 'excalidraw') &&
+              b.content.split('\n').length > COLLAPSE_THRESHOLD
+            }
+            showRegenerate={showRegenerate && idx === lastCodeIdx}
+            onRegenerate={onRegenerate}
+          />
         ) : (
           <TextBlock key={idx} content={b.content} />
         )

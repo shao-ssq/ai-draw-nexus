@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* 手绘主题自托管字体（离线可用，含完整中文） */
+@font-face {
+  font-family: 'Muyao-Softbrush';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/muyao-softbrush.woff2') format('woff2');
+}
+
 /* Modern Design System - Custom Theme */
 @theme {
   /* Colors */
@@ -44,6 +53,78 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+/* 隐藏 Excalidraw 内置的素材库入口与右下角帮助按钮 */
+.excalidraw-wrapper .default-sidebar-trigger,
+.excalidraw-wrapper .help-icon {
+  display: none !important;
+}
+
+/* “滚动回到内容”按钮：字号缩小、边框加深、内边距收紧、文字精确居中 */
+.excalidraw-wrapper .scroll-back-to-content {
+  font-size: 12px !important;
+  line-height: 1 !important;
+  /* 高度由 padding 撑开，避免固定 height 导致文字视觉偏上 */
+  height: auto !important;
+  padding: 6px 14px !important;
+  border: 1px solid #1a1a1a !important;
+  /* 抵消 .excalidraw button 的 letter-spacing 导致的文字偏左 */
+  letter-spacing: 0 !important;
+  /* 显式双向居中（flex 默认左对齐） */
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+/* “重置画布”确认弹窗：紧凑精致化（不卡固定宽度，靠内容自然撑开）
+   Excalidraw 的 Modal 通过 portal 挂到 document.body，portal 容器自带 .excalidraw class */
+.excalidraw .confirm-dialog {
+  --max-width: 320px !important;
+}
+.excalidraw .confirm-dialog .Modal__content {
+  max-width: 320px !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 30px -6px rgba(0, 0, 0, 0.18), 0 2px 8px -2px rgba(0, 0, 0, 0.08) !important;
+}
+/* Island 是内容容器，默认 padding 2.5rem/1.5rem 太大，统一收紧 */
+.excalidraw .confirm-dialog .Island {
+  padding: 16px 18px !important;
+  box-shadow: none !important;
+}
+/* 标题：字号缩小、去掉下边框与大留白 */
+.excalidraw .confirm-dialog .Dialog__title {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border-bottom: none !important;
+  padding: 0 !important;
+  margin: 0 0 6px 0 !important;
+}
+/* 正文文字 */
+.excalidraw .confirm-dialog .clear-canvas__content,
+.excalidraw .confirm-dialog .Dialog__content p {
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  color: #6B7280 !important;
+  margin: 0 0 12px 0 !important;
+}
+/* 按钮组 */
+.excalidraw .confirm-dialog .confirm-dialog-buttons {
+  column-gap: 8px !important;
+  justify-content: flex-end !important;
+}
+/* 按钮：高度收紧、字号缩小、去掉字距 */
+.excalidraw .confirm-dialog .Dialog__action-button {
+  height: 28px !important;
+  padding: 0 12px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  border-radius: 7px !important;
+}
+.excalidraw .confirm-dialog .Dialog__action-button svg {
+  width: 12px !important;
+  height: 12px !important;
 }
 
 /* 打字机光标闪烁：硬切换显隐 */
@@ -130,6 +211,47 @@ body {
   text-transform: lowercase;
   letter-spacing: 0.02em;
   font-weight: 500;
+}
+.markdown-body .md-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.markdown-body .md-code-copy:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--color-primary);
+}
+.markdown-body .md-code-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.markdown-body .md-code-regenerate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.markdown-body .md-code-regenerate:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--color-primary);
 }
 .markdown-body .md-code-block.is-collapsed {
   /* 折叠时隐藏 header 底部分隔线 */
