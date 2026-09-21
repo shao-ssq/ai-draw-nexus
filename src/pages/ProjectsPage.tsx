@@ -157,24 +157,24 @@ export function ProjectsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 bg-surface/80 backdrop-blur-sm hover:bg-surface"
+                        className="h-6 w-6 bg-surface/80 backdrop-blur-sm hover:bg-surface"
                         onClick={(e) => {
                           e.stopPropagation()
                           openRenameDialog(project)
                         }}
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil className="h-3 w-3" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 bg-surface/80 text-red-600 backdrop-blur-sm hover:bg-surface hover:text-red-700"
+                        className="h-6 w-6 bg-surface/80 text-red-600 backdrop-blur-sm hover:bg-surface hover:text-red-700"
                         onClick={(e) => {
                           e.stopPropagation()
                           setDeleteTarget(project)
                         }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
 
@@ -227,12 +227,12 @@ export function ProjectsPage() {
 
       {/* Rename Dialog */}
       <Dialog open={!!renameTarget} onOpenChange={() => setRenameTarget(null)}>
-        <DialogContent className="rounded-2xl">
+        <DialogContent className="max-w-xs rounded-xl p-4 text-sm">
           <DialogHeader>
-            <DialogTitle>重命名项目</DialogTitle>
+            <DialogTitle className="text-sm">重命名项目</DialogTitle>
           </DialogHeader>
           <Input
-            className='my-4'
+            className='my-2 h-8 text-sm'
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="项目名称"
@@ -243,15 +243,17 @@ export function ProjectsPage() {
           <DialogFooter>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setRenameTarget(null)}
-              className="rounded-full"
+              className="rounded-full text-xs"
             >
               取消
             </Button>
             <Button
+              size="sm"
               onClick={handleRename}
               disabled={isRenaming || !newTitle.trim()}
-              className="rounded-full bg-primary text-surface hover:bg-primary/90"
+              className="rounded-full bg-primary text-surface text-xs hover:bg-primary/90"
             >
               {isRenaming ? '保存中...' : '保存'}
             </Button>
@@ -261,25 +263,27 @@ export function ProjectsPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="rounded-2xl">
+        <DialogContent className="max-w-xs rounded-xl p-4 text-sm">
           <DialogHeader>
-            <DialogTitle>删除项目</DialogTitle>
-            <DialogDescription className='my-4'>
+            <DialogTitle className="text-sm">删除项目</DialogTitle>
+            <DialogDescription className='my-2 text-xs'>
               确定要删除 &quot;{deleteTarget?.title}&quot; 吗？此操作无法撤销。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setDeleteTarget(null)}
-              className="rounded-full"
+              className="rounded-full text-xs"
             >
               取消
             </Button>
             <Button
+              size="sm"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="rounded-full bg-red-600 text-surface hover:bg-red-700"
+              className="rounded-full bg-red-600 text-surface text-xs hover:bg-red-700"
             >
               {isDeleting ? '删除中...' : '删除'}
             </Button>

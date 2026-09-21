@@ -1,16 +1,16 @@
 import type { Env, Message } from './types.js'
 import { corsHeaders } from './cors.js'
+import { resolveEndpoint, buildThinkingParam } from './ai-providers.js'
 
 export async function streamOpenAI(messages: Message[], env: Env): Promise<Response> {
-  const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')
-  const chatPath = baseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'
+  const endpoint = resolveEndpoint(env.AI_BASE_URL, '/chat/completions')
   const apiKey = env.AI_API_KEY
 
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
 
-  const response = await fetch(`${baseUrl}${chatPath}`, {
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -21,6 +21,7 @@ export async function streamOpenAI(messages: Message[], env: Env): Promise<Respo
       messages: messages,
       max_tokens: 64000,
       stream: true,
+      ...buildThinkingParam(env),
     }),
   })
 
@@ -61,7 +62,14 @@ export async function streamOpenAI(messages: Message[], env: Env): Promise<Respo
 
           try {
             const parsed = JSON.parse(data)
-            const content = parsed.choices?.[0]?.delta?.content
+            const delta = parsed.choices?.[0]?.delta
+            const content = delta?.content
+            const reasoning = delta?.reasoning_content
+            // 思考增量单独转发（reasoning 字段），不混入 content，
+            // 前端绘图只消费 content，思考文本可用于"思考中..."指示。
+            if (reasoning) {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ reasoning })}\n\n`))
+            }
             if (content) {
               await writer.write(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
             }

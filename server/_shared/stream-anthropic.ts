@@ -1,10 +1,9 @@
 import type { Env, Message } from './types.js'
 import { corsHeaders } from './cors.js'
-import { convertContentPartsToAnthropic } from './ai-providers.js'
+import { convertContentPartsToAnthropic, resolveEndpoint } from './ai-providers.js'
 
 export async function streamAnthropic(messages: Message[], env: Env): Promise<Response> {
-  const baseUrl = env.AI_BASE_URL.replace(/\/+$/, '')
-  const messagesPath = baseUrl.endsWith('/v1') ? '/messages' : '/v1/messages'
+  const endpoint = resolveEndpoint(env.AI_BASE_URL, '/messages')
   const apiKey = env.AI_API_KEY
 
   if (!apiKey) {
@@ -19,7 +18,7 @@ export async function streamAnthropic(messages: Message[], env: Env): Promise<Re
     content: typeof m.content === 'string' ? m.content : convertContentPartsToAnthropic(m.content),
   }))
 
-  const response = await fetch(`${baseUrl}${messagesPath}`, {
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

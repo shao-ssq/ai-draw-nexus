@@ -13,6 +13,7 @@ function getEnv(): Env {
     AI_BASE_URL: process.env.AI_BASE_URL || '',
     AI_API_KEY: process.env.AI_API_KEY || '',
     AI_MODEL_ID: process.env.AI_MODEL_ID || '',
+    AI_THINKING: process.env.AI_THINKING,
   }
 }
 
@@ -30,25 +31,29 @@ app.post('/chat', async (c) => {
     }
 
     const provider = env.AI_PROVIDER || 'openai'
+    // 请求体 thinking 覆盖 env AI_THINKING（未传则用 env 默认 disabled）
+    const effectiveEnv: Env = body.thinking
+      ? { ...env, AI_THINKING: body.thinking }
+      : env
 
     if (stream) {
       switch (provider) {
         case 'anthropic':
-          return streamAnthropic(messages, env)
+          return streamAnthropic(messages, effectiveEnv)
         case 'openai':
         default:
-          return streamOpenAI(messages, env)
+          return streamOpenAI(messages, effectiveEnv)
       }
     } else {
       let response: string
 
       switch (provider) {
         case 'anthropic':
-          response = await callAnthropic(messages, env)
+          response = await callAnthropic(messages, effectiveEnv)
           break
         case 'openai':
         default:
-          response = await callOpenAI(messages, env)
+          response = await callOpenAI(messages, effectiveEnv)
           break
       }
 

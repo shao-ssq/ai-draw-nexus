@@ -11,10 +11,11 @@ import {
   Check,
   PanelLeftClose,
   Sparkles,
+  Brain,
 } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import { useChatStore } from '@/stores/chatStore'
-import { useEditorStore, selectIsEmpty } from '@/stores/editorStore'
+import { useEditorStore, selectIsEmpty, selectEngineType } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
 import {
@@ -115,6 +116,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevMsgCountRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -122,8 +124,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
+  const engineType = useEditorStore(selectEngineType)
   const { generate } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
+
+  // 思考开关默认值按引擎区分：Excalidraw 默认开启（布局规划精细），Mermaid/DrawIO 默认关闭（速度快）。
+  // 切换引擎/项目时重置为该引擎的默认值（仅在用户未手动切换过的时段；流式中不重置）。
+  useEffect(() => {
+    setThinkingEnabled(engineType === 'excalidraw')
+  }, [engineType])
 
   const handleCopy = async (text: string, id: string) => {
     try {
@@ -202,7 +211,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
-    await generate(message, isCanvasEmpty, currentAttachments)
+    await generate(message, isCanvasEmpty, currentAttachments, thinkingEnabled ? 'enabled' : 'disabled')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -217,7 +226,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (isStreaming) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
-    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments)
+    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingEnabled ? 'enabled' : 'disabled')
   }
 
   return (
@@ -370,14 +379,30 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 </span>
               )}
             </div>
-            <Button
-              onClick={() => handleSend()}
-              disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
-              size="sm"
-              className="h-8 rounded-lg border border-surface/30"
-            >
-              <Send className="h-4 w-4 mr-1" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                title={thinkingEnabled ? '深度思考：已开启（生成更慢但规划更精细）' : '深度思考：已关闭（速度快）'}
+                onClick={() => setThinkingEnabled((v) => !v)}
+                disabled={isStreaming}
+                className={`h-8 w-8 rounded-lg border ${
+                  thinkingEnabled
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted hover:text-primary'
+                }`}
+              >
+                <Brain className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={() => handleSend()}
+                disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
+                size="sm"
+                className="h-8 rounded-lg border border-surface/30"
+              >
+                <Send className="h-4 w-4 mr-1" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

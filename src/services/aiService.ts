@@ -68,15 +68,17 @@ export const aiService = {
    * Stream chat response with SSE support
    * @param messages - The messages to send
    * @param onChunk - Callback for each content chunk
+   * @param thinking - 'enabled' | 'disabled'，控制模型思考开关（默认 disabled）
    * @param onComplete - Optional callback when streaming completes
    * @returns The full accumulated content
    */
   async streamChat(
     messages: PayloadMessage[],
     onChunk: (chunk: string, accumulated: string) => void,
+    thinking: 'enabled' | 'disabled' = 'disabled',
     onComplete?: (content: string) => void
   ): Promise<string> {
-    const request: ChatRequest = { messages, stream: true } as ChatRequest & { stream: boolean }
+    const request: ChatRequest = { messages, stream: true, thinking } as ChatRequest & { stream: boolean }
 
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',

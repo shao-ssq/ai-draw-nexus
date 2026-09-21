@@ -175,12 +175,16 @@ export function useAIGenerate() {
   const generate = async (
     userInput: string,
     isInitial: boolean,
-    attachments?: Attachment[]
+    attachments?: Attachment[],
+    thinkingMode?: 'enabled' | 'disabled',
   ) => {
     if (!currentProject) return
 
     const engineType = currentProject.engineType
     const systemPrompt = SYSTEM_PROMPTS[engineType]
+    // 引擎默认思考策略：Excalidraw 默认开启（布局规划精细），Mermaid/DrawIO 默认关闭（速度快）
+    const effectiveThinking: 'enabled' | 'disabled' =
+      thinkingMode ?? (engineType === 'excalidraw' ? 'enabled' : 'disabled')
 
     // 首次生成时，发送即根据用户输入自动改名（仅此一次，后续编辑不再触发）
     // 必须在 AI 调用前执行，并基于 store 最新值合并，避免被后续 setProject 覆盖
@@ -227,7 +231,8 @@ export function useAIGenerate() {
             engineType,
             systemPrompt,
             assistantMsgId,
-            attachments
+            attachments,
+            effectiveThinking
           )
         } else {
           finalCode = await singlePhaseInitialGeneration(
@@ -235,7 +240,8 @@ export function useAIGenerate() {
             engineType,
             systemPrompt,
             assistantMsgId,
-            attachments
+            attachments,
+            effectiveThinking
           )
         }
       } else {
@@ -248,7 +254,8 @@ export function useAIGenerate() {
           engineType,
           systemPrompt,
           assistantMsgId,
-          attachments
+          attachments,
+          effectiveThinking
         )
       }
 
@@ -263,7 +270,8 @@ export function useAIGenerate() {
           validatedCode,
           validation.error || 'Unknown error',
           systemPrompt,
-          assistantMsgId
+          assistantMsgId,
+          effectiveThinking
         )
         // Re-validate after fix attempts
         validation = await validateContent(validatedCode, engineType)
@@ -361,7 +369,8 @@ export function useAIGenerate() {
     engineType: EngineType,
     systemPrompt: string,
     assistantMsgId: string,
-    attachments?: Attachment[]
+    attachments: Attachment[] | undefined,
+    thinkingMode: 'enabled' | 'disabled'
   ): Promise<string> => {
     // Phase 1: Generate elements
     updateMessage(assistantMsgId, {
@@ -389,7 +398,8 @@ export function useAIGenerate() {
           updateMessage(assistantMsgId, {
             content: accumulated,
           })
-        }
+        },
+        thinkingMode
       )
       elements = extractCode(response, engineType)
     } else {
@@ -424,7 +434,8 @@ export function useAIGenerate() {
           updateMessage(assistantMsgId, {
             content: accumulated,
           })
-        }
+        },
+        thinkingMode
       )
       return extractCode(response, engineType)
     } else {
@@ -441,7 +452,8 @@ export function useAIGenerate() {
     engineType: EngineType,
     systemPrompt: string,
     assistantMsgId: string,
-    attachments?: Attachment[]
+    attachments: Attachment[] | undefined,
+    thinkingMode: 'enabled' | 'disabled'
   ): Promise<string> => {
     updateMessage(assistantMsgId, {
       content: '',
@@ -464,7 +476,8 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
-        }
+        },
+        thinkingMode
       )
       return extractCode(response, engineType)
     } else {
@@ -484,7 +497,8 @@ export function useAIGenerate() {
     engineType: EngineType,
     systemPrompt: string,
     assistantMsgId: string,
-    attachments?: Attachment[]
+    attachments: Attachment[] | undefined,
+    thinkingMode: 'enabled' | 'disabled'
   ): Promise<string> => {
     const editPrompt = buildEditPrompt(currentCode, userInput)
     const editContent = buildMultimodalContent(editPrompt, attachments)
@@ -501,7 +515,8 @@ export function useAIGenerate() {
         messages,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
-        }
+        },
+        thinkingMode
       )
       return extractCode(response, engineType)
     } else {
@@ -517,7 +532,8 @@ export function useAIGenerate() {
     failedCode: string,
     errorMessage: string,
     systemPrompt: string,
-    assistantMsgId: string
+    assistantMsgId: string,
+    thinkingMode: 'enabled' | 'disabled'
   ): Promise<string> => {
     let currentCode = failedCode
     let currentError = errorMessage
@@ -552,7 +568,8 @@ export function useAIGenerate() {
             updateMessage(assistantMsgId, {
               content: accumulated,
             })
-          }
+          },
+          thinkingMode
         )
         fixedCode = extractCode(response, 'mermaid')
       } else {

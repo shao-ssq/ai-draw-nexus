@@ -1,2 +1,2 @@
-1，两种图的 prompt 修改，优化。
+1，excalidraw 效果提升优化
 2，DrawIO

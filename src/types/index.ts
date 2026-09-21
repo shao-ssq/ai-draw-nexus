@@ -61,4 +61,5 @@ export interface PayloadMessage {
 export interface ChatRequest {
   messages: PayloadMessage[]
   stream?: boolean
+  thinking?: 'enabled' | 'disabled'
 }
