@@ -217,7 +217,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       //    toolbar/sidebar/graph overflow the page and cover the React chat.
        
       const AppCtor: any = (window as any).App
-      const hostDiv = containerHostRef.current
       if (AppCtor && hostDiv) {
          
         const EditorCtor: any = (window as any).Editor
