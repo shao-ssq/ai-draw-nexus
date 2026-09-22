@@ -56,6 +56,8 @@ const THUMBNAIL_TIMEOUT_MS = 5000
 const CHROME_HIDING_CSS = `
   .geFooterContainer, .geTabContainer, .geTabbedDiagram { display: none !important; }
   .geMenubarContainer { background: #fff !important; }
+  /* Hide top-right buttons: 全屏, 折叠/展开 */
+  .geButton[title="全屏"], .geButton[title="折叠 / 展开"] { display: none !important; }
 `
 
 function downloadBlob(href: string, filename: string) {
@@ -236,39 +238,93 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         const drawioUi: any = ui
         slot.app = drawioUi
 
-        // Clear default content and set zoom to 100% + center view
-        try {
-          const graph = drawioUi.editor?.graph
-          if (graph) {
-            // Delete all default cells (blank page content)
+        // Function to clear content and set zoom to 100% + center view
+        const initializeCanvas = () => {
+          try {
+            const graph = drawioUi.editor?.graph
+            if (!graph) return false
+
             const model = graph.getModel()
+            const root = model.root
+
+            // Delete all default cells (pages) except root
             model.beginUpdate()
             try {
-              const childCount = model.getChildCount(model.root)
-              for (let i = childCount - 1; i >= 0; i--) {
-                const child = model.getChildAt(model.root, i)
-                if (child) {
-                  // Only delete default pages (not the root)
-                  const geo = model.getGeometry(child)
-                  if (geo && model.isVertex(child)) {
-                    model.remove(child)
-                  }
+              const pageCount = model.getChildCount(root)
+              for (let i = pageCount - 1; i >= 0; i--) {
+                const page = model.getChildAt(root, i)
+                if (page && model.isVertex(page)) {
+                  model.remove(page)
                 }
               }
+
+              // Add a blank default page
+              model.insertVertex(root, null, 'Page-1', 0, 0, 800, 600)
             } finally {
               model.endUpdate()
             }
 
-            // Set zoom to 100%
+            // Zoom to 100%
             graph.zoomActual()
+            graph.centerZoom = false
 
-            // Center the view
-            graph.view.setScale(1)
-            graph.view.render()
+            // Use zoomTo to ensure 100%
+            if (typeof graph.zoomTo === 'function') {
+              graph.zoomTo(1, false)
+            }
+
+            // Disable page view (non-page view mode)
+            drawioUi?.actions?.get('pageView')?.funct?.()
+
+            // Create floating format panel (隐藏原格式容器，创建浮动面板)
+            const formatContainer = drawioUi.formatContainer
+            if (formatContainer) {
+              formatContainer.style.display = 'none'
+            }
+
+            const hostContainer = graph.container
+            if (hostContainer) {
+              // 创建浮动格式面板
+              const floatingPanel = document.createElement('div')
+              floatingPanel.id = 'floating-format-panel'
+              floatingPanel.style.cssText = 'position:absolute;right:10px;top:60px;width:240px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:1000;max-height:calc(100vh - 120px);overflow-y:auto;display:none;'
+
+              // 复制格式面板内容
+              const format = drawioUi.format
+              if (format?.container) {
+                floatingPanel.appendChild(format.container.cloneNode(true))
+                hostContainer.appendChild(floatingPanel)
+              }
+
+              // 选择变化时显示/隐藏面板
+              graph.getSelectionModel().addListener('change', () => {
+                const count = graph.getSelectionCount()
+                floatingPanel.style.display = count > 0 ? 'block' : 'none'
+              })
+            }
+
+            // Refresh UI
+            graph.refresh?.()
+            drawioUi?.editor?.refresh?.()
+
+            return true
+          } catch (e) {
+            console.error('[DrawioEditor] Failed to initialize canvas:', e)
+            return false
           }
-        } catch (e) {
-          console.error('[DrawioEditor] Failed to initialize canvas:', e)
         }
+
+        // Try immediately, then retry a few times to handle async loading
+        let attempts = 0
+        const tryInit = () => {
+          attempts++
+          if (initializeCanvas()) {
+            console.log('[DrawioEditor] Canvas initialized successfully')
+          } else if (attempts < 5) {
+            setTimeout(tryInit, 200)
+          }
+        }
+        setTimeout(tryInit, 100)
 
         const fireChange = () => {
           if (changeTimerRef.current != null) {
