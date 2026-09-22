@@ -88,10 +88,7 @@ declare global {
 }
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
-  function DrawioEditor(
-    { data, onChange, className, darkMode: _darkMode = false },
-    ref,
-  ) {
+  function DrawioEditor({ data, onChange, className, darkMode: _darkMode = false }, ref) {
     const containerHostRef = useRef<HTMLDivElement | null>(null)
     const changeTimerRef = useRef<number | null>(null)
     const baseElRef = useRef<HTMLBaseElement | null>(null)
@@ -122,6 +119,42 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         changeHandler: null,
       })
       const cancelled = { v: false }
+
+      // 0) Set up MutationObserver BEFORE drawio loads to catch all body additions
+      const hostDiv = containerHostRef.current
+      if (hostDiv) {
+        const drawioClasses = [
+          'geMenubarContainer',
+          'geToolbarContainer',
+          'geSidebarContainer',
+          'geFormatContainer',
+          'geDiagramContainer',
+          'geTabContainer',
+          'geHsplit',
+          'geSpriteBackground',
+          'geSidebarTooltip',
+        ]
+
+        const moveToHost = () => {
+          if (!hostDiv || cancelled.v) return
+          drawioClasses.forEach((cls) => {
+            document.querySelectorAll('.' + cls).forEach((el) => {
+              if (el.parentElement === document.body) {
+                hostDiv.appendChild(el)
+              }
+            })
+          })
+        }
+
+        // Observe immediately
+        const observer = new MutationObserver(() => {
+          if (!cancelled.v) {
+            setTimeout(moveToHost, 0)
+          }
+        })
+        observer.observe(document.body, { childList: true })
+        ;(hostDiv as any).__drawioObserver = observer
+      }
 
       // 1) Inject <base href="/drawio/"> so drawio's relative paths
       //    (mxUtils.load('styles/default.xml'), <img src="mxgraph/images/foo.png">)
@@ -200,7 +233,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
       window.onDrawioAppReady = (ui) => {
         if (cancelled.v) return
-         
+
         const drawioUi: any = ui
         slot.app = drawioUi
 
@@ -225,6 +258,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         document.body.classList.toggle('geDarkMode', !!_darkMode)
 
         slot.changeHandler = (xml: string) => onChange?.(xml)
+
         setIsReady(true)
       }
 
