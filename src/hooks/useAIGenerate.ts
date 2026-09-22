@@ -13,6 +13,7 @@ import {
 import { generateThumbnail } from '@/lib/thumbnail'
 import { aiService } from '@/services/aiService'
 import { validateContent } from '@/lib/validators'
+import { ensureMxfileWrapped } from '@/lib/drawioXml'
 import { useToast } from '@/hooks/useToast'
 import type { PayloadMessage, EngineType, Attachment, ContentPart } from '@/types'
 
@@ -282,7 +283,13 @@ export function useAIGenerate() {
       }
 
       // Use the validated (possibly fixed) code
-      finalCode = validatedCode
+      // For drawio, the AI emits bare <mxCell> fragments (per the prompt). Wrap
+      // them in <mxfile><diagram><mxGraphModel>... so drawio's setFileData and
+      // our IndexedDB version store a complete single-page diagram.
+      finalCode =
+        engineType === 'drawio'
+          ? ensureMxfileWrapped(validatedCode)
+          : validatedCode
 
       // Update content (AI generation auto-saves, so mark as saved)
       setContentFromVersion(finalCode)

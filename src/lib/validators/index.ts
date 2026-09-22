@@ -73,7 +73,14 @@ export function validateExcalidraw(json: string): ValidationResult {
 
 /**
  * Drawio XML validator
- * Validates XML format and mxGraphModel structure
+ *
+ * Accepts either:
+ *   - A bare <mxCell>...</mxCell> fragment (what the AI prompt produces —
+ *     it explicitly forbids the outer <mxfile>/<mxGraphModel>/<root> wrappers).
+ *   - A wrapped <mxfile><diagram><mxGraphModel>...</mxGraphModel></diagram></mxfile>
+ *     document (what drawio emits and what we store in IndexedDB after wrap).
+ *
+ * Either way, only well-formed XML with at least one <mxCell> is accepted.
  */
 export function validateDrawio(xml: string): ValidationResult {
   try {
@@ -86,20 +93,8 @@ export function validateDrawio(xml: string): ValidationResult {
       return { valid: false, error: 'Invalid XML format: ' + parseError.textContent }
     }
 
-    // Check for mxGraphModel root element
-    const mxGraphModel = doc.querySelector('mxGraphModel')
-    if (!mxGraphModel) {
-      return { valid: false, error: 'Missing mxGraphModel root element' }
-    }
-
-    // Check for root element within mxGraphModel
-    const root = mxGraphModel.querySelector('root')
-    if (!root) {
-      return { valid: false, error: 'Missing root element within mxGraphModel' }
-    }
-
-    // Check for at least one mxCell
-    const mxCells = root.querySelectorAll('mxCell')
+    // Require at least one <mxCell> (in either <root> or at the top level).
+    const mxCells = doc.querySelectorAll('mxCell')
     if (mxCells.length === 0) {
       return { valid: false, error: 'No mxCell elements found' }
     }

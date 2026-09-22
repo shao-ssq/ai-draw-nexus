@@ -5,7 +5,7 @@ import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
 import { VersionPanel } from '@/features/editor/VersionPanel'
-import { useEditorStore } from '@/stores/editorStore'
+import { useEditorStore, selectEngineType } from '@/stores/editorStore'
 import { useChatStore } from '@/stores/chatStore'
 import { ProjectRepository } from '@/services/projectRepository'
 import { VersionRepository } from '@/services/versionRepository'
@@ -34,6 +34,7 @@ export function EditorPage() {
   const { success } = useToast()
 
   const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
+  const engineType = useEditorStore(selectEngineType)
   const { loadForProject } = useChatStore()
 
   // Load project on mount
@@ -358,16 +359,25 @@ export function EditorPage() {
           )}
         </div>
 
-        {/* Center: Canvas */}
-        <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
-          <CanvasArea ref={canvasRef} />
-        </div>
-
-        {/* Right: Version Panel (collapsible) */}
-        {isVersionPanelOpen && (
-          <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-            <VersionPanel onCollapse={() => setIsVersionPanelOpen(false)} />
+        {/* Canvas — positioned to the RIGHT of the chat panel for drawio */}
+        {engineType === 'drawio' ? (
+          <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+            <CanvasArea ref={canvasRef} />
           </div>
+        ) : (
+          <>
+            {/* Center: Canvas (Mermaid / Excalidraw) */}
+            <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+              <CanvasArea ref={canvasRef} />
+            </div>
+
+            {/* Right: Version Panel (collapsible) */}
+            {isVersionPanelOpen && (
+              <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+                <VersionPanel onCollapse={() => setIsVersionPanelOpen(false)} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

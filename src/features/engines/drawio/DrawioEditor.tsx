@@ -1,28 +1,32 @@
-import { useCallback, useImperativeHandle, useRef, useState, forwardRef, useEffect } from 'react'
-import { DrawIoEmbed } from 'react-drawio'
-import type { DrawIoEmbedRef, EventExport, EventSave, EventAutoSave } from 'react-drawio'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
+// src/features/engines/drawio/DrawioEditor.tsx
+// Self-hosted drawio 31.4.6 editor. Loads drawio bundles from /drawio/*
+// (served by the same-origin Hono backend) directly into this page — no iframe.
+// Captures the EditorUi instance via window.onDrawioAppReady (set up before
+// bootstrap.js runs) and drives it via direct method calls.
+//
+// Imperative handle API preserved 1:1 from the previous react-drawio
+// implementation so CanvasArea.tsx / EditorPage.tsx / useAIGenerate.ts need
+// zero changes.
+
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import Editor from '@monaco-editor/react'
+import { Check, Copy, Play, Undo2, X } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/Tooltip'
-import { X, Copy, Check, Play, Undo2 } from 'lucide-react'
-
-type ExportFormat = 'svg' | 'png'
-
-interface DrawioEditorProps {
-  data: string // XML string
-  onChange?: (data: string) => void
-  onExport?: (data: EventExport) => void
-  onSave?: (data: EventSave) => void
-  className?: string
-  darkMode?: boolean
-  ui?: 'min' | 'sketch'
-}
+import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/utils'
+import { ensureMxfileWrapped } from '@/lib/drawioXml'
 
 export interface DrawioEditorRef {
   load: (xml: string) => void
@@ -36,201 +40,373 @@ export interface DrawioEditorRef {
   getThumbnail: () => Promise<string>
 }
 
-const DRAWIO_BASE_URL = import.meta.env.VITE_DRAWIO_BASE_URL || 'https://embed.diagrams.net'
+interface DrawioEditorProps {
+  data: string // XML string (wrapped <mxfile> or bare <mxCell> fragments)
+  onChange?: (data: string) => void
+  className?: string
+  darkMode?: boolean
+  ui?: 'min' | 'sketch'
+}
+
+const CHANGE_DEBOUNCE_MS = 300
+const THUMBNAIL_TIMEOUT_MS = 5000
+
+// Mirror react-drawio's old `configuration.css` payload so the iframe-less
+// editor gets the same chrome-hidden treatment.
+const CHROME_HIDING_CSS = `
+  .geFooterContainer, .geTabContainer, .geTabbedDiagram { display: none !important; }
+  .geMenubarContainer { background: #fff !important; }
+`
+
+function downloadBlob(href: string, filename: string) {
+  const link = document.createElement('a')
+  link.href = href
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  if (href.startsWith('blob:')) {
+    setTimeout(() => URL.revokeObjectURL(href), 100)
+  }
+}
+
+// Global singleton holders — App.main can only run once per page (it has
+// an internal isMainCalled guard). When the user switches drawio projects,
+// React unmounts/remounts <DrawioEditor>; we need to reuse the existing
+// EditorUi instance instead of trying to re-initialise drawio. We stash
+// references on window so they survive React component lifecycles.
+// EditorUi is an untyped drawio global; `any` is intentional.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+interface DrawioGlobalSlot {
+  app: any | null
+  changeHandler: ((xml: string) => void) | null
+}
+declare global {
+  interface Window {
+    __wedrawDrawio?: DrawioGlobalSlot
+  }
+}
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
-  function DrawioEditor({ data, onChange, onExport, className, darkMode: _darkMode = false, ui = 'min' }, ref) {
-    const drawioRef = useRef<DrawIoEmbedRef | null>(null)
+  function DrawioEditor(
+    { data, onChange, className, darkMode: _darkMode = false },
+    ref,
+  ) {
+    const containerHostRef = useRef<HTMLDivElement | null>(null)
+    const changeTimerRef = useRef<number | null>(null)
+    const baseElRef = useRef<HTMLBaseElement | null>(null)
+    const styleElRef = useRef<HTMLStyleElement | null>(null)
+    const mxScriptRef = useRef<HTMLScriptElement | null>(null)
+    const bootstrapScriptRef = useRef<HTMLScriptElement | null>(null)
+
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
     const [copied, setCopied] = useState(false)
     const [editedCode, setEditedCode] = useState(data)
     const [hasChanges, setHasChanges] = useState(false)
 
-    // 使用 ref 来跟踪导出请求，避免状态更新的时序问题
-    const saveResolverRef = useRef<{
-      resolver: ((data: string) => void) | null
-      format: ExportFormat | null
-    }>({ resolver: null, format: null })
-
-    // 用于获取缩略图的 resolver
-    const thumbnailResolverRef = useRef<((data: string) => void) | null>(null)
-
-    // Sync editedCode when data prop changes
+    // Keep the Monaco panel in sync with the upstream `data` prop.
     useEffect(() => {
       setEditedCode(data)
       setHasChanges(false)
     }, [data])
 
-    // Handle export event - 处理导出回调
-    const handleExportCallback = useCallback((exportData: EventExport) => {
-      // 如果有待处理的缩略图请求，优先处理
-      if (thumbnailResolverRef.current) {
-        thumbnailResolverRef.current(exportData.data)
-        thumbnailResolverRef.current = null
-        return
+    // Boot drawio scripts on mount.
+    // Cleanup keeps the scripts + EditorUi alive across remounts (React 18
+    // StrictMode would otherwise re-run the boot and trigger
+    // "Class 'OrgChart.Annotations.CanBeNullAttribute' is already defined").
+    // On full page unload everything is GC'd naturally.
+    useEffect(() => {
+      const slot: DrawioGlobalSlot = (window.__wedrawDrawio ??= {
+        app: null,
+        changeHandler: null,
+      })
+      const cancelled = { v: false }
+
+      // 1) Inject <base href="/drawio/"> so drawio's relative paths
+      //    (mxUtils.load('styles/default.xml'), <img src="mxgraph/images/foo.png">)
+      //    resolve against our backend.
+      if (!document.getElementById('drawio-base')) {
+        const base = document.createElement('base')
+        base.id = 'drawio-base'
+        base.href = '/drawio/'
+        document.head.prepend(base)
+        baseElRef.current = base
       }
 
-      // 如果有待处理的文件保存请求，优先处理
-      if (saveResolverRef.current.resolver) {
-        const format = saveResolverRef.current.format
-        saveResolverRef.current.resolver(exportData.data)
-        saveResolverRef.current = { resolver: null, format: null }
+      // 2) Inject user CSS to hide footer/tab chrome.
+      if (!document.getElementById('drawio-chrome-style')) {
+        const style = document.createElement('style')
+        style.id = 'drawio-chrome-style'
+        style.textContent = CHROME_HIDING_CSS
+        document.head.appendChild(style)
+        styleElRef.current = style
+      }
 
-        // 对于 png/svg 格式，处理完毕后直接返回
-        if (format === 'png' || format === 'svg') {
-          return
+      // 2b) Inject drawio's grapheditor.css. drawio's bundled CSS uses
+      //     `.geEditor>.geMenubarContainer { position: absolute; ... }`
+      //     selectors — without this stylesheet the menubar/toolbar/sidebar
+      //     default to position:static and pile up at the bottom of the
+      //     container (or below it) instead of overlaying the graph.
+      //     In drawio's own index.html this is loaded via a static <link>;
+      //     we inject it imperatively because we don't use index.html.
+      //     Editor.loadCompatibleCss() only loads it on legacy browsers
+      //     without lightDarkColorSupported, so we must do it ourselves.
+      if (!document.getElementById('drawio-grapheditor-css')) {
+        const cssLink = document.createElement('link')
+        cssLink.id = 'drawio-grapheditor-css'
+        cssLink.rel = 'stylesheet'
+        cssLink.type = 'text/css'
+        cssLink.href = '/drawio/styles/grapheditor.css'
+        document.head.appendChild(cssLink)
+      }
+
+      // 3) Fast path: drawio already booted on this page (StrictMode second
+      //    pass, or user switched projects). Reuse the existing EditorUi.
+      if (slot.app) {
+        // Wire onChange into the existing listener (re-attached in step 5).
+        slot.changeHandler = (xml: string) => onChange?.(xml)
+        setIsReady(true)
+        return () => {
+          cancelled.v = true
+          // Do NOT remove scripts / <base> / <style>: they must survive
+          // remounts so the next mount can reuse the EditorUi. Real cleanup
+          // happens on full page reload.
         }
       }
 
-      // 调用外部的 onExport 回调（如果有）
-      onExport?.(exportData)
-    }, [onExport])
+      // 4) Slow path: first boot on this page. Define ready callback BEFORE
+      //    bootstrap.js runs. Patched bootstrap.js calls
+      //    App.main(window.onDrawioAppReady, window.wedrawCreateAppUi) after
+      //    app.min.js + mxClient.js finish loading. `wedrawCreateAppUi` is
+      //    the createUi factory that returns an App constructed with OUR
+      //    container div instead of document.body — otherwise drawio's
+      //    toolbar/sidebar/graph overflow the page and cover the React chat.
+       
+      const AppCtor: any = (window as any).App
+      const hostDiv = containerHostRef.current
+      if (AppCtor && hostDiv) {
+         
+        const EditorCtor: any = (window as any).Editor
+         
+        window.wedrawCreateAppUi = function (): any {
+          // chromeless=true hides the menubar; uiTheme='min' minimises chrome
+          return new AppCtor(
+            new EditorCtor(true, null, null, null, false),
+            hostDiv,
+            true,
+          )
+        }
+      }
+      window.onDrawioAppReady = (ui) => {
+        if (cancelled.v) return
+         
+        const drawioUi: any = ui
+        slot.app = drawioUi
 
-    // 保存图表到文件的核心函数
-    const saveDiagramToFile = useCallback((filename: string, format: ExportFormat) => {
-      if (!drawioRef.current || !isReady) {
-        console.warn('Draw.io editor not ready')
-        return
+        const fireChange = () => {
+          if (changeTimerRef.current != null) {
+            clearTimeout(changeTimerRef.current)
+          }
+          changeTimerRef.current = window.setTimeout(() => {
+            changeTimerRef.current = null
+            try {
+              const node = drawioUi.getXmlFileData(true, false, true, false)
+              const xml = window.mxUtils.getXml(node)
+              slot.changeHandler?.(xml)
+            } catch (e) {
+              console.error('[DrawioEditor] getXmlFileData failed', e)
+            }
+          }, CHANGE_DEBOUNCE_MS)
+        }
+        drawioUi.editor.graph.model.addListener(window.mxEvent.CHANGE, fireChange)
+
+        // Mirror the React-side darkMode preference onto the drawio body.
+        document.body.classList.toggle('geDarkMode', !!_darkMode)
+
+        slot.changeHandler = (xml: string) => onChange?.(xml)
+        setIsReady(true)
       }
 
-      // 设置 resolver，在导出回调中处理
-      saveResolverRef.current = {
-        resolver: (exportData: string) => {
-          let href: string
-          let extension: string
-
-          if (format === 'png') {
-            // PNG 数据是 base64 data URL
-            if (exportData.startsWith('data:')) {
-              href = exportData
-            } else {
-              href = `data:image/png;base64,${exportData}`
-            }
-            extension = '.png'
-          } else {
-            // SVG 格式
-            if (exportData.startsWith('data:')) {
-              href = exportData
-            } else if (exportData.startsWith('<svg') || exportData.startsWith('<?xml')) {
-              // 原始 SVG 内容 - 创建 blob URL
-              const blob = new Blob([exportData], { type: 'image/svg+xml' })
-              href = URL.createObjectURL(blob)
-            } else {
-              // 假设是 base64 编码的 SVG
-              href = `data:image/svg+xml;base64,${exportData}`
-            }
-            extension = '.svg'
-          }
-
-          // 执行下载
-          const link = document.createElement('a')
-          link.href = href
-          link.download = `${filename}${extension}`
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-
-          // 延迟释放 blob URL
-          if (href.startsWith('blob:')) {
-            setTimeout(() => URL.revokeObjectURL(href), 100)
-          }
-        },
-        format,
+      // 5) Load mxgraph base first, then bootstrap.js. Both deferred so
+      //    execution order matches document insertion order.
+      if (!document.querySelector('script[data-wedraw="mxclient"]')) {
+        const mxScript = document.createElement('script')
+        mxScript.src = '/drawio/mxgraph/mxClient.js'
+        mxScript.defer = true
+        mxScript.setAttribute('data-wedraw', 'mxclient')
+        document.head.appendChild(mxScript)
+        mxScriptRef.current = mxScript
       }
 
-      // 触发导出 - 回调会在 handleExportCallback 中处理
-      drawioRef.current.exportDiagram({ format })
-    }, [isReady])
+      if (!document.querySelector('script[data-wedraw="bootstrap"]')) {
+        const bootstrap = document.createElement('script')
+        bootstrap.src = '/drawio/js/bootstrap.js'
+        bootstrap.defer = true
+        bootstrap.setAttribute('data-wedraw', 'bootstrap')
+        document.head.appendChild(bootstrap)
+        bootstrapScriptRef.current = bootstrap
+      }
 
-    // Export as SVG
-    const exportAsSvg = useCallback(() => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'svg')
-    }, [saveDiagramToFile])
+      return () => {
+        cancelled.v = true
+        // Keep <base>, <style>, and <script>s alive across remounts.
+        // On full page reload everything is GC'd naturally.
+      }
+      // onChange is captured via the slot.changeHandler indirection above,
+      // so each remount wires its own callback without re-registering
+      // drawio listeners.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
-    // Export as PNG
-    const exportAsPng = useCallback(() => {
-      saveDiagramToFile(`diagram-${Date.now()}`, 'png')
-    }, [saveDiagramToFile])
+    // Apply `data` prop changes once drawio is ready.
+    useEffect(() => {
+      const ui = window.__wedrawDrawio?.app
+      if (!isReady || !ui || !data) return
+      try {
+        ui.setFileData(ensureMxfileWrapped(data))
+        ui.editor.setModified(false)
+      } catch (e) {
+        console.error('[DrawioEditor] setFileData failed', e)
+      }
+    }, [data, isReady])
 
-    // Export as source (.drawio file - XML format)
-    const exportAsSource = useCallback(() => {
-      if (!data) return
+    // ---------- Imperative API ----------
 
-      const blob = new Blob([data], { type: 'application/xml' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `diagram-${Date.now()}.drawio`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    }, [data])
-
-    // Get thumbnail as PNG data URL
     const getThumbnail = useCallback((): Promise<string> => {
       return new Promise((resolve) => {
-        if (!drawioRef.current || !isReady) {
+        const ui = window.__wedrawDrawio?.app ?? null
+        if (!ui || !isReady) {
           resolve('')
           return
         }
-
-        // 设置超时，防止无限等待
-        const timeout = setTimeout(() => {
-          thumbnailResolverRef.current = null
-          resolve('')
-        }, 5000)
-
-        thumbnailResolverRef.current = (exportData: string) => {
-          clearTimeout(timeout)
-          // 确保返回的是 data URL 格式
-          if (exportData.startsWith('data:')) {
-            resolve(exportData)
-          } else {
-            resolve(`data:image/png;base64,${exportData}`)
+        let settled = false
+        const finish = (val: string) => {
+          if (!settled) {
+            settled = true
+            resolve(val)
           }
         }
-
-        // 触发 PNG 导出
-        drawioRef.current.exportDiagram({ format: 'png' })
+        const timeout = window.setTimeout(() => {
+          console.warn('[DrawioEditor] getThumbnail timeout')
+          finish('')
+        }, THUMBNAIL_TIMEOUT_MS)
+        try {
+          ui.editor.exportToCanvas(
+            (canvas: HTMLCanvasElement) => {
+              window.clearTimeout(timeout)
+              try {
+                finish(canvas.toDataURL('image/png'))
+              } catch (e) {
+                console.error('[DrawioEditor] toDataURL failed', e)
+                finish('')
+              }
+            },
+            800, // width px
+            null, // imageCache
+            null, // background
+            (err: unknown) => {
+              window.clearTimeout(timeout)
+              console.error('[DrawioEditor] exportToCanvas error', err)
+              finish('')
+            },
+          )
+        } catch (e) {
+          window.clearTimeout(timeout)
+          console.error('[DrawioEditor] exportToCanvas threw', e)
+          finish('')
+        }
       })
     }, [isReady])
 
-    // Expose methods via ref
-    useImperativeHandle(ref, () => ({
-      load: (xml: string) => {
-        if (drawioRef.current) {
-          drawioRef.current.load({ xml })
-        }
-      },
-      exportDiagram: (format: 'xmlsvg' | 'png' | 'svg' = 'xmlsvg') => {
-        if (drawioRef.current) {
-          drawioRef.current.exportDiagram({ format })
-        }
-      },
-      exportAsSvg,
-      exportAsPng,
-      exportAsSource,
-      showSourceCode: () => setShowCodePanel(true),
-      hideSourceCode: () => setShowCodePanel(false),
-      toggleSourceCode: () => setShowCodePanel(prev => !prev),
-      getThumbnail,
-    }), [exportAsSvg, exportAsPng, exportAsSource, getThumbnail])
-
-    // Handle drawio load event
-    const handleLoad = useCallback(() => {
-      setIsReady(true)
+    const exportAsPng = useCallback(() => {
+      const ui = window.__wedrawDrawio?.app ?? null
+      if (!ui) return
+      try {
+        ui.editor.exportToCanvas(
+          (canvas: HTMLCanvasElement) => {
+            downloadBlob(
+              canvas.toDataURL('image/png'),
+              `diagram-${Date.now()}.png`,
+            )
+          },
+          null, null, null,
+          (err: unknown) => console.error('[DrawioEditor] PNG export failed', err),
+        )
+      } catch (e) {
+        console.error('[DrawioEditor] exportAsPng threw', e)
+      }
     }, [])
 
-    // Handle autosave event - 自动监听数值变化
-    const handleAutoSave = useCallback((data: EventAutoSave) => {
-      if (data.xml) {
-        onChange?.(data.xml)
+    const exportAsSvg = useCallback(() => {
+      const ui = window.__wedrawDrawio?.app ?? null
+      if (!ui) return
+      try {
+        ui.exportSvg(
+          1,    // scale
+          false, // transparentBackground
+          true,  // ignoreSelection
+          false, // addShadow
+          false, // editable
+          true,  // embedImages
+          0,     // border
+          false, // noCrop
+          true,  // currentPage
+          null,  // linkTarget
+          null,  // theme
+          null,  // exportType
+          false, // embedFonts
+          (svg: string) => {
+            const blob = new Blob([svg], { type: 'image/svg+xml' })
+            const href = URL.createObjectURL(blob)
+            downloadBlob(href, `diagram-${Date.now()}.svg`)
+          },
+        )
+      } catch (e) {
+        console.error('[DrawioEditor] exportAsSvg threw', e)
       }
-    }, [onChange])
+    }, [])
 
-    // Copy code handler
+    const exportAsSource = useCallback(() => {
+      if (!data) return
+      const blob = new Blob([data], { type: 'application/xml' })
+      const href = URL.createObjectURL(blob)
+      downloadBlob(href, `diagram-${Date.now()}.drawio`)
+    }, [data])
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        load: (xml: string) => {
+          const ui = window.__wedrawDrawio?.app ?? null
+          if (!ui) return
+          try {
+            ui.setFileData(ensureMxfileWrapped(xml))
+            ui.editor.setModified(false)
+          } catch (e) {
+            console.error('[DrawioEditor] load failed', e)
+          }
+        },
+        // Back-compat shim: the old react-drawio exportDiagram('xmlsvg') used
+        // to call convert.diagrams.net — we no longer have that endpoint, so
+        // route to PNG. svg/svg routes to exportAsSvg.
+        exportDiagram: (format: 'xmlsvg' | 'png' | 'svg' = 'xmlsvg') => {
+          if (format === 'svg') exportAsSvg()
+          else exportAsPng()
+        },
+        exportAsSvg,
+        exportAsPng,
+        exportAsSource,
+        showSourceCode: () => setShowCodePanel(true),
+        hideSourceCode: () => setShowCodePanel(false),
+        toggleSourceCode: () => setShowCodePanel(prev => !prev),
+        getThumbnail,
+      }),
+      [exportAsSvg, exportAsPng, exportAsSource, getThumbnail],
+    )
+
+    // ---------- Code panel handlers ----------
+
     const handleCopyCode = useCallback(async () => {
       try {
         await navigator.clipboard.writeText(editedCode)
@@ -241,29 +417,27 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
     }, [editedCode])
 
-    // Handle code edit (for Monaco Editor)
-    const handleCodeChange = useCallback((value: string | undefined) => {
-      const newCode = value || ''
-      setEditedCode(newCode)
-      setHasChanges(newCode !== data)
-    }, [data])
+    const handleCodeChange = useCallback(
+      (value: string | undefined) => {
+        const newCode = value || ''
+        setEditedCode(newCode)
+        setHasChanges(newCode !== data)
+      },
+      [data],
+    )
 
-    // Apply code changes
     const handleApplyCode = useCallback(() => {
-      if (editedCode.trim() && editedCode !== data) {
-        // Load the new XML into draw.io
-        if (drawioRef.current) {
-          drawioRef.current.load({ xml: editedCode })
-        }
-        // Notify parent of change
-        if (onChange) {
-          onChange(editedCode)
-        }
-        setHasChanges(false)
+      if (!editedCode.trim() || editedCode === data) return
+      const ui = window.__wedrawDrawio?.app ?? null
+      try {
+        ui?.setFileData(ensureMxfileWrapped(editedCode))
+      } catch (e) {
+        console.error('[DrawioEditor] apply code failed', e)
       }
+      onChange?.(editedCode)
+      setHasChanges(false)
     }, [editedCode, data, onChange])
 
-    // Reset code to original
     const handleResetCode = useCallback(() => {
       setEditedCode(data)
       setHasChanges(false)
@@ -271,31 +445,19 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     return (
       <TooltipProvider>
-        <div className={cn('relative h-full w-full', className)}>
-          <DrawIoEmbed
-            ref={drawioRef}
-            xml={data}
-            baseUrl={DRAWIO_BASE_URL}
-            onLoad={handleLoad}
-            onAutoSave={handleAutoSave}
-            onExport={handleExportCallback}
-            autosave={true}
-
-            configuration={{
-              // 隐藏底部页面管理栏
-              css: `.geFooterContainer, .geTabContainer, .geTabbedDiagram { display: none !important; }
-              .geMenubarContainer {background:#fff !important; }`
-            }}
-            urlParameters={{
-              ui,
-              spin: true,
-              libraries: false,
-              saveAndExit: false,
-              noExitBtn: true,
-              noSaveBtn: true
-            }}
-
-          />
+        <div
+          ref={containerHostRef}
+          id="drawio-host"
+          className={cn(
+            // `geEditor` is required so drawio's CSS (`.geEditor > .geMenubarContainer
+            // { position: absolute; ... }`) actually positions the toolbar/sidebar
+            // /diagram absolutely inside this container. Without it they default to
+            // static and fall to the bottom.
+            'geEditor relative h-full min-h-0 w-full overflow-hidden',
+            className,
+          )}
+        >
+          {/* drawio mounts itself into this div via App.main's createUi factory */}
           {!isReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80">
               <div className="text-center">
@@ -305,10 +467,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             </div>
           )}
 
-          {/* Code Panel */}
           {showCodePanel && (
             <div className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
-              {/* Panel Header */}
               <div className="flex items-center justify-between border-b border-border px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Draw.io XML 源码</span>
@@ -344,7 +504,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                   </Button>
                 </div>
               </div>
-              {/* Code Editor */}
               <div className="flex-1 min-h-0 overflow-hidden">
                 <Editor
                   height="300px"
@@ -368,7 +527,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                   }}
                 />
               </div>
-              {/* Panel Footer */}
               <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-2">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -406,5 +564,5 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         </div>
       </TooltipProvider>
     )
-  }
+  },
 )

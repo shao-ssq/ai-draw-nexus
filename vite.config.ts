@@ -18,6 +18,13 @@ export default defineConfig({
         target: `http://localhost:${process.env.PORT || 8787}`,
         changeOrigin: true,
       },
+      // Forward drawio self-hosted assets to the Node backend (production
+      // serves them from /drawio/* on the same port; in dev, Vite would
+      // otherwise hit its SPA fallback and 404).
+      '/drawio': {
+        target: `http://localhost:${process.env.PORT || 8787}`,
+        changeOrigin: true,
+      },
     },
   },
 })
