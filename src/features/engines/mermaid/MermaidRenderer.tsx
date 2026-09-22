@@ -839,8 +839,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             </DropdownMenu>
           </div>
 
-          {/* 缩放/重置控制 - 右上角 */}
-          <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-md border border-[#e5e7eb] bg-surface/80 px-0.5 py-0.5 shadow-sm backdrop-blur-sm">
+          {/* 缩放/重置控制 - 左下角 */}
+          <div className="absolute bottom-3 left-3 z-10 flex items-center gap-0.5 rounded-md border border-[#e5e7eb] bg-surface/80 px-0.5 py-0.5 shadow-sm backdrop-blur-sm">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
