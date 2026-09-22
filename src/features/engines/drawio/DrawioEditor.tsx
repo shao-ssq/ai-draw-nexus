@@ -236,6 +236,40 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         const drawioUi: any = ui
         slot.app = drawioUi
 
+        // Clear default content and set zoom to 100% + center view
+        try {
+          const graph = drawioUi.editor?.graph
+          if (graph) {
+            // Delete all default cells (blank page content)
+            const model = graph.getModel()
+            model.beginUpdate()
+            try {
+              const childCount = model.getChildCount(model.root)
+              for (let i = childCount - 1; i >= 0; i--) {
+                const child = model.getChildAt(model.root, i)
+                if (child) {
+                  // Only delete default pages (not the root)
+                  const geo = model.getGeometry(child)
+                  if (geo && model.isVertex(child)) {
+                    model.remove(child)
+                  }
+                }
+              }
+            } finally {
+              model.endUpdate()
+            }
+
+            // Set zoom to 100%
+            graph.zoomActual()
+
+            // Center the view
+            graph.view.setScale(1)
+            graph.view.render()
+          }
+        } catch (e) {
+          console.error('[DrawioEditor] Failed to initialize canvas:', e)
+        }
+
         const fireChange = () => {
           if (changeTimerRef.current != null) {
             clearTimeout(changeTimerRef.current)
