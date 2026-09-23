@@ -16,6 +16,18 @@ const GRAPHMODEL_OPEN =
 const ROOT_OPEN = '<root>'
 const BASE_CELLS = '<mxCell id="0"/><mxCell id="1" parent="0"/>'
 
+function forcePageViewDisabled(xml: string): string {
+  return xml.replace(/(<mxGraphModel\b[^>]*)(>)/i, (_tag, attributes: string, close: string) => {
+    const normalizedAttributes = attributes.replace(
+      /(\bpage\s*=\s*["'])[^"']*(["'])/i,
+      (_match, prefix: string, suffix: string) => `${prefix}0${suffix}`,
+    )
+    return normalizedAttributes.includes(' page="0"') || /\bpage\s*=\s*["']0["']/i.test(normalizedAttributes)
+      ? normalizedAttributes + close
+      : normalizedAttributes + ' page="0"' + close
+  })
+}
+
 /**
  * Wrap inner mxGraphModel XML (or bare <mxCell> fragments) into a single-page
  * <mxfile> document.
@@ -47,8 +59,9 @@ export function isMxfileWrapped(xml: string): boolean {
  * Wrap if not already wrapped. Idempotent.
  */
 export function ensureMxfileWrapped(xml: string): string {
-  if (!xml || isMxfileWrapped(xml)) return xml
-  return wrapToMxfile(xml)
+  if (!xml) return xml
+  const wrapped = isMxfileWrapped(xml) ? xml : wrapToMxfile(xml)
+  return forcePageViewDisabled(wrapped)
 }
 
 /**

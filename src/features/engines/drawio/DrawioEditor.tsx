@@ -93,6 +93,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
   function DrawioEditor({ data, onChange, className, darkMode: _darkMode = false }, ref) {
     const containerHostRef = useRef<HTMLDivElement | null>(null)
     const changeTimerRef = useRef<number | null>(null)
+    const pendingInternalDataRef = useRef<string | null>(null)
     const baseElRef = useRef<HTMLBaseElement | null>(null)
     const styleElRef = useRef<HTMLStyleElement | null>(null)
     const mxScriptRef = useRef<HTMLScriptElement | null>(null)
@@ -273,8 +274,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               graph.zoomTo(1, false)
             }
 
-            // Disable page view (non-page view mode)
-            drawioUi?.actions?.get('pageView')?.funct?.()
+            // Keep page view disabled by default and synchronize the menu state.
+            drawioUi.setPageVisible(false)
 
             // Create floating format panel (隐藏原格式容器，创建浮动面板)
             const formatContainer = drawioUi.formatContainer
@@ -335,6 +336,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             try {
               const node = drawioUi.getXmlFileData(true, false, true, false)
               const xml = window.mxUtils.getXml(node)
+              pendingInternalDataRef.current = xml
               slot.changeHandler?.(xml)
             } catch (e) {
               console.error('[DrawioEditor] getXmlFileData failed', e)
@@ -386,8 +388,16 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     useEffect(() => {
       const ui = window.__wedrawDrawio?.app
       if (!isReady || !ui || !data) return
+
+      if (pendingInternalDataRef.current === data) {
+        pendingInternalDataRef.current = null
+        ui.setPageVisible(false)
+        return
+      }
+
       try {
         ui.setFileData(ensureMxfileWrapped(data))
+        ui.setPageVisible(false)
         ui.editor.setModified(false)
       } catch (e) {
         console.error('[DrawioEditor] setFileData failed', e)
@@ -505,6 +515,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           if (!ui) return
           try {
             ui.setFileData(ensureMxfileWrapped(xml))
+            ui.setPageVisible(false)
             ui.editor.setModified(false)
           } catch (e) {
             console.error('[DrawioEditor] load failed', e)
@@ -554,6 +565,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       const ui = window.__wedrawDrawio?.app ?? null
       try {
         ui?.setFileData(ensureMxfileWrapped(editedCode))
+        ui?.setPageVisible(false)
       } catch (e) {
         console.error('[DrawioEditor] apply code failed', e)
       }
