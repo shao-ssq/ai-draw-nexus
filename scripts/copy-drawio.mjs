@@ -107,6 +107,7 @@ urlParams['saveAndExit'] = '0';
 urlParams['noExitBtn'] = '1';
 urlParams['noSaveBtn'] = '1';
 urlParams['lang'] = 'zh';              // force Chinese UI
+urlParams['ui'] = 'simple';            // force Draw.io's simple UI theme
 urlParams['tabs'] = '0';               // hide page tabs
 urlParams['grid'] = '0';               // hide grid by default
 urlParams['pv'] = '0';                 // disable page view

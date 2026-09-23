@@ -128,10 +128,10 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const { generate } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
 
-  // 思考开关默认值按引擎区分：Excalidraw 默认开启（布局规划精细），Mermaid/DrawIO 默认关闭（速度快）。
+  // 思考开关默认值按引擎区分：Mermaid 默认开启（布局规划精细），Excalidraw/DrawIO 默认关闭（速度快）。
   // 切换引擎/项目时重置为该引擎的默认值（仅在用户未手动切换过的时段；流式中不重置）。
   useEffect(() => {
-    setThinkingEnabled(engineType === 'excalidraw')
+    setThinkingEnabled(engineType === 'mermaid')
   }, [engineType])
 
   const handleCopy = async (text: string, id: string) => {

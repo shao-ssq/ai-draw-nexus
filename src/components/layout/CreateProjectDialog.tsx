@@ -12,27 +12,21 @@ import { ENGINES } from '@/constants'
 import { ProjectRepository } from '@/services/projectRepository'
 import type { EngineType } from '@/types'
 
-const ENGINE_TIPS: Record<EngineType, { title: string; features: string[] }> = {
+const ENGINE_TIPS: Record<EngineType, { title: string; features: string[]; types: string[] }> = {
   mermaid: {
     title: 'Mermaid',
-    features: [
-      '基于文本的图表生成，使用简洁的语法,适合快速绘制结构化图表',
-      '支持流程图、时序图、甘特图、ER图等多种图表，可直接嵌入 Markdown',
-    ],
+    features: ['语法简洁', 'Markdown 友好', '结构化图表'],
+    types: ['流程图', '时序图', '甘特图', 'ER 图', '类图', '状态图'],
   },
   excalidraw: {
     title: 'Excalidraw',
-    features: [
-      '风格精美的手绘风格的白板工具，界面简洁直观',
-      '自由绘制，支持形状、箭头、文本等元素',
-    ],
+    features: ['手绘风格', '自由编辑'],
+    types: ['架构草图', '产品原型', '思维导图', '流程草图', '示意图'],
   },
   drawio: {
     title: 'Draw.io',
-    features: [
-      '专业级图表编辑器，功能丰富,内置大量模板和图形库',
-      '支持 UML、网络拓扑、流程图等专业图表,适合绘制复杂、精细的技术文档图表',
-    ],
+    features: ['专业图表', '精细编辑'],
+    types: ['UML', '流程图', '架构图'],
   },
 }
 
@@ -94,19 +88,30 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
             </div>
           </div>
           {/* Tips 区域 */}
-          <div className="rounded-xl border border-border bg-background p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
-              <span>💡</span>
-              <span>{ENGINE_TIPS[engine].title} 特点</span>
-            </div>
-            <ul className="space-y-1 text-xs text-muted">
-              {ENGINE_TIPS[engine].features.map((feature, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="mt-0.5 text-primary">•</span>
-                  <span>{feature}</span>
-                </li>
+          <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+            {/* 第一层：特点 */}
+            <div className="flex flex-wrap gap-2">
+              {ENGINE_TIPS[engine].features.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-primary px-3 py-1 text-sm font-medium text-surface"
+                >
+                  {tag}
+                </span>
               ))}
-            </ul>
+            </div>
+            <div className="border-t border-border" />
+            {/* 第二层：支持的图类型 */}
+            <div className="flex flex-wrap gap-2">
+              {ENGINE_TIPS[engine].types.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-muted"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
         <DialogFooter>

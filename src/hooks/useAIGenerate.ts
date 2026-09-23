@@ -150,7 +150,8 @@ export function useAIGenerate() {
   const handleStreamAccumulated = useCallback((
     assistantMsgId: string,
     engineType: EngineType,
-    accumulated: string
+    accumulated: string,
+    onThinking?: (isThinking: boolean) => void
   ) => {
     updateMessage(assistantMsgId, { content: accumulated })
     if (engineType !== 'excalidraw') return
@@ -183,9 +184,11 @@ export function useAIGenerate() {
 
     const engineType = currentProject.engineType
     const systemPrompt = SYSTEM_PROMPTS[engineType]
-    // 引擎默认思考策略：Excalidraw 默认开启（布局规划精细），Mermaid/DrawIO 默认关闭（速度快）
+    // 引擎默认思考策略：全部默认 disabled。
+    // 历史曾给 Excalidraw 默认 enabled，但 GLM 等兼容端点 stream+thinking 组合会触发上游 500。
+    // 用户可在 UI 显式开启 thinking 切换。
     const effectiveThinking: 'enabled' | 'disabled' =
-      thinkingMode ?? (engineType === 'excalidraw' ? 'enabled' : 'disabled')
+      thinkingMode ?? 'disabled'
 
     // 首次生成时，发送即根据用户输入自动改名（仅此一次，后续编辑不再触发）
     // 必须在 AI 调用前执行，并基于 store 最新值合并，避免被后续 setProject 覆盖
@@ -479,12 +482,20 @@ export function useAIGenerate() {
     setMessages(messages)
 
     if (USE_STREAMING) {
+      // 保存原始 phaseLabel，思考结束后恢复
+      const originalPhaseLabel = '正在生成图表'
       const response = await aiService.streamChat(
         messages,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         },
-        thinkingMode
+        thinkingMode,
+        undefined, // onComplete
+        (isThinking: boolean) => {
+          updateMessage(assistantMsgId, {
+            phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
+          })
+        }
       )
       return extractCode(response, engineType)
     } else {
@@ -518,12 +529,20 @@ export function useAIGenerate() {
     setMessages(messages)
 
     if (USE_STREAMING) {
+      // 保存原始 phaseLabel，思考结束后恢复
+      const originalPhaseLabel = '正在修改图表'
       const response = await aiService.streamChat(
         messages,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         },
-        thinkingMode
+        thinkingMode,
+        undefined, // onComplete
+        (isThinking: boolean) => {
+          updateMessage(assistantMsgId, {
+            phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
+          })
+        }
       )
       return extractCode(response, engineType)
     } else {

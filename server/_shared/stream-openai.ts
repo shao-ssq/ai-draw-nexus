@@ -40,6 +40,8 @@ export async function streamOpenAI(messages: Message[], env: Env): Promise<Respo
 
     const decoder = new TextDecoder()
     let buffer = ''
+    let inThinking = false // 追踪是否处于思考内容中
+    let thinkingChanged = false // 思考状态是否改变
 
     try {
       while (true) {
@@ -63,13 +65,46 @@ export async function streamOpenAI(messages: Message[], env: Env): Promise<Respo
           try {
             const parsed = JSON.parse(data)
             const delta = parsed.choices?.[0]?.delta
-            const content = delta?.content
-            const reasoning = delta?.reasoning_content
-            // 思考增量单独转发（reasoning 字段），不混入 content，
-            // 前端绘图只消费 content，思考文本可用于"思考中..."指示。
-            if (reasoning) {
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ reasoning })}\n\n`))
+            let content = delta?.content || ''
+
+            // 先检测思考状态，再过滤内容
+            const beforeThinking = inThinking
+            const thinkStart = content.indexOf('<think>')
+            const thinkEnd = content.indexOf('</think>')
+
+            if (thinkStart !== -1 && thinkEnd !== -1 && thinkStart < thinkEnd) {
+              // 同一 chunk 内有完整的 <think>...</think>
+              // 提取 <think> 之前 + </think> 之后的内容
+              content = content.slice(0, thinkStart) + content.slice(thinkEnd + 4)
+              // 状态不变（进入又退出，还是在非思考状态）
+              if (beforeThinking) {
+                thinkingChanged = true
+                inThinking = false
+              }
+            } else if (thinkStart !== -1) {
+              // 思考开始
+              content = content.slice(0, thinkStart)
+              if (!beforeThinking) {
+                thinkingChanged = true
+                inThinking = true
+              }
+            } else if (thinkEnd !== -1) {
+              // 思考结束
+              content = content.slice(thinkEnd + 4)
+              if (beforeThinking) {
+                thinkingChanged = true
+                inThinking = false
+              }
+            } else if (beforeThinking) {
+              // 仍在思考中，跳过全部内容
+              content = ''
             }
+
+            if (thinkingChanged) {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'thinking', inThinking })}\n\n`))
+              thinkingChanged = false
+            }
+
             if (content) {
               await writer.write(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
             }

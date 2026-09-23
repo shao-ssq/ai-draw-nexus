@@ -1,6 +1,10 @@
 import type { Env, Message } from './types.js'
 import { corsHeaders } from './cors.js'
-import { convertContentPartsToAnthropic, resolveEndpoint } from './ai-providers.js'
+import {
+  convertContentPartsToAnthropic,
+  resolveEndpoint,
+  buildAnthropicThinkingParam,
+} from './ai-providers.js'
 
 export async function streamAnthropic(messages: Message[], env: Env): Promise<Response> {
   const endpoint = resolveEndpoint(env.AI_BASE_URL, '/messages')
@@ -31,6 +35,7 @@ export async function streamAnthropic(messages: Message[], env: Env): Promise<Re
       system: typeof systemMessage?.content === 'string' ? systemMessage.content : '',
       messages: anthropicMessages,
       stream: true,
+      ...buildAnthropicThinkingParam(env, 64000),
     }),
   })
 

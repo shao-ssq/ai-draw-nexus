@@ -17,7 +17,7 @@ import {
   useState,
 } from 'react'
 import Editor from '@monaco-editor/react'
-import { Check, Copy, Play, Undo2, X } from 'lucide-react'
+import { Check, Copy, Play, Shapes, Undo2, X } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -58,6 +58,101 @@ const CHROME_HIDING_CSS = `
   .geMenubarContainer { background: #fff !important; }
   /* Hide top-right buttons: 全屏, 折叠/展开 */
   .geButton[title="全屏"], .geButton[title="折叠 / 展开"] { display: none !important; }
+  /* 工具栏"格式"开关（Ctrl+Shift+P）：样式已改为浮动面板随选中自动显隐，
+     该按钮既冗余又会按旧逻辑切换 grid 占位宽度，直接隐藏 */
+  .geButton[title="格式 (Ctrl+Shift+P)"] { display: none !important; }
+  /* 绘图面板（左侧形状栏 + 分隔条）默认隐藏。grid 列是 min-content，
+     隐藏后画布自动占满宽度；点击浮动按钮切换 host 上的类名。 */
+  #drawio-host.wedraw-sidebar-hidden > .geSidebarContainer:not(.geFormatContainer),
+  #drawio-host.wedraw-sidebar-hidden > .geHsplit { display: none !important; }
+  /* 浮动样式面板：选中画布元素时弹出，点击空白处隐藏 */
+  #floating-format-panel {
+    background: light-dark(#f8f9fa, var(--ge-dark-panel-color, #2b2b2b));
+    border: 1px solid light-dark(#e5e7eb, #444);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+    scrollbar-gutter: stable;
+  }
+  #floating-format-panel > .geFormatContainer { border-left: none !important; }
+
+  /* ====== 修复画板偏移 & 滚动条 ======
+     drawio 自带的 grapheditor.css 在 .geEditor > .geDiagramContainer 上硬编码
+     margin-left: -10px —— 这是给 sidebar 留的视觉补偿。我们默认隐藏 sidebar，
+     这个 -10px 会让画板向左偏，露出右侧一条 10px 的浅色条带（geEditor 的
+     panel-color），看上去就像多出来的滚动条/空白。强制清零。 */
+  #drawio-host > .geDiagramContainer { margin-left: 0 !important; }
+
+  /* geEditor 用 display:grid + position:absolute，宽高 100%。父容器一旦
+     flex 高度变化（例如 chat 面板展开），min-content 行可能撑出可见滚动条。
+     强制让网格布局完全继承父容器尺寸，禁止任何方向溢出。 */
+  #drawio-host.geEditor {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    max-width: 100vw !important;
+  }
+
+  /* drawio 在 .geEditor 下挂了一个 hidden SVG（position:absolute,
+     margin:-9999px, z-index:-1）用来做 sprite 离屏渲染。直接子 svg 都是这种
+     隐藏用途 —— 不要修改它的 left/top/margin，否则会把它拉回屏幕并撑出滚动条。
+     这里只确保它的尺寸不超父容器，保留 drawio 的隐藏策略。 */
+  #drawio-host > svg {
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  /* drawio 的 .geToolbarContainer / .geMenubarContainer / .geFormatContainer 等
+     grid 子项在 flex 子元素 height:100% 中可能因为 content-box 高度溢出。
+     用 box-sizing:border-box 锁定尺寸，配合 overflow:hidden 截断内容。
+     min-width:0 是关键 —— flex/grid item 默认 min-width:auto，
+     会让长内容（如 drawio 的 filename / <select> 控件）撑出最小尺寸触发滚动条。 */
+  #drawio-host > .geMenubarContainer,
+  #drawio-host > .geToolbarContainer,
+  #drawio-host > .geDiagramContainer,
+  #drawio-host > .geSidebarContainer,
+  #drawio-host > .geHsplit,
+  #drawio-host > .geTabContainer {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* drawio 的 menubar 里有 filename（可能很长）以及带 select 的工具栏。
+     这些容器内部的 inline 元素默认 min-width:auto 会撑出宽度。
+     强制限制所有子元素的最大宽度，并截断文本溢出。 */
+  #drawio-host .geMenubarContainer *,
+  #drawio-host .geToolbarContainer * {
+    max-width: 100% !important;
+  }
+  #drawio-host .geFilename {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* drawio 的 toolbar 右侧可能挂一个宽度 240px 的 geFormatContainer
+     即便 display:none 也参与 layout。强制彻底移除。 */
+  #drawio-host > .geSidebarContainer.geFormatContainer {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  /* 浮动样式面板内部使用 overflow-y:auto 的 .geFormatContainer，
+     但其内部还有不少没有滚动条的子元素（geFormatTitleContainer 等）。
+     限制其最大尺寸，避免内部子元素（如 mxWindow）撑出。 */
+  #floating-format-panel .geFormatContainer {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
 `
 
 function downloadBlob(href: string, filename: string) {
@@ -101,6 +196,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
+    const [sidebarOpen, setSidebarOpen] = useState(false)
     const [copied, setCopied] = useState(false)
     const [editedCode, setEditedCode] = useState(data)
     const [hasChanges, setHasChanges] = useState(false)
@@ -245,6 +341,79 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             const graph = drawioUi.editor?.graph
             if (!graph) return false
 
+            // Expose a debug helper so users can call window.__wedrawDrawioDebug()
+            // in DevTools to find which element produces scrollbars.
+            ;(window as any).__wedrawDrawioDebug = () => {
+              const hostEl = document.getElementById('drawio-host')
+              const vw = window.innerWidth
+              const vh = window.innerHeight
+              const dump = (el: Element) => {
+                const r = el.getBoundingClientRect()
+                const cs = getComputedStyle(el)
+                return {
+                  tag: el.tagName,
+                  cls: ((el as HTMLElement).className || '')
+                    .toString()
+                    .slice(0, 80),
+                  id: el.id,
+                  rect: {
+                    x: Math.round(r.x),
+                    y: Math.round(r.y),
+                    w: Math.round(r.width),
+                    h: Math.round(r.height),
+                  },
+                  scroll: { sw: el.scrollWidth, sh: el.scrollHeight },
+                  client: { cw: el.clientWidth, ch: el.clientHeight },
+                  css: {
+                    overflow: cs.overflow,
+                    overflowX: cs.overflowX,
+                    overflowY: cs.overflowY,
+                    position: cs.position,
+                    height: cs.height,
+                  },
+                }
+              }
+              const offenders = Array.from(
+                document.querySelectorAll('*'),
+              ).filter((el) => {
+                const r = el.getBoundingClientRect()
+                return (
+                  r.right > vw + 1 ||
+                  r.bottom > vh + 1 ||
+                  r.left < -1 ||
+                  r.top < -1
+                )
+              })
+              const report = {
+                viewport: { vw, vh },
+                hostChain: (() => {
+                  const chain: Element[] = []
+                  let cur: Element | null = hostEl
+                  while (cur && chain.length < 10) {
+                    chain.push(cur)
+                    cur = cur.parentElement
+                  }
+                  return chain.map(dump)
+                })(),
+                drawioContainers: [
+                  'geMenubarContainer',
+                  'geToolbarContainer',
+                  'geSidebarContainer',
+                  'geFormatContainer',
+                  'geDiagramContainer',
+                  'geHsplit',
+                  'geTabContainer',
+                ]
+                  .map((c) => {
+                    const el = document.querySelector('.' + c)
+                    return el ? { name: c, ...dump(el) } : { name: c, missing: true }
+                  }),
+                offenders: offenders.slice(0, 30).map(dump),
+              }
+              console.log('[Drawio debug]', report)
+              return report
+            }
+
             const model = graph.getModel()
             const root = model.root
 
@@ -258,11 +427,15 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                   model.remove(page)
                 }
               }
-
-              // Add a blank default page
-              model.insertVertex(root, null, 'Page-1', 0, 0, 800, 600)
             } finally {
               model.endUpdate()
+            }
+
+            // 保证 root 下有一个 layer（非 vertex 单元）作为默认父节点。
+            // 不能 insertVertex 充当页面 —— 那会渲染出一个可见矩形。
+            if (model.getChildCount(root) === 0) {
+              const layer = new window.mxCell(null, new window.mxGeometry(), null)
+              model.add(root, layer, 0)
             }
 
             // Zoom to 100%
@@ -277,31 +450,36 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             // Keep page view disabled by default and synchronize the menu state.
             drawioUi.setPageVisible(false)
 
-            // Create floating format panel (隐藏原格式容器，创建浮动面板)
+            // 隐藏 grid 中右侧格式容器的占位（min-content 列自动塌缩，画布占满）
             const formatContainer = drawioUi.formatContainer
             if (formatContainer) {
               formatContainer.style.display = 'none'
             }
 
-            const hostContainer = graph.container
-            if (hostContainer) {
-              // 创建浮动格式面板
+            // 把真实格式面板（样式）搬进浮动面板：选中元素时弹出，点击空白处隐藏。
+            // 必须移动真实节点 —— cloneNode 不会复制事件监听，克隆出来的面板
+            // 控件全是死的。format.container 就是 formatContainer 本身。
+            const diagramContainer = graph.container?.parentElement
+            if (formatContainer && diagramContainer) {
               const floatingPanel = document.createElement('div')
               floatingPanel.id = 'floating-format-panel'
-              floatingPanel.style.cssText = 'position:absolute;right:10px;top:60px;width:240px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);z-index:1000;max-height:calc(100vh - 120px);overflow-y:auto;display:none;'
+              floatingPanel.style.cssText =
+                'position:absolute;right:10px;top:10px;width:240px;z-index:1000;max-height:calc(100% - 20px);display:none;'
+              diagramContainer.appendChild(floatingPanel)
+              floatingPanel.appendChild(formatContainer)
+              formatContainer.style.width = '240px'
+              formatContainer.style.maxHeight = 'calc(100vh - 140px)'
 
-              // 复制格式面板内容
-              const format = drawioUi.format
-              if (format?.container) {
-                floatingPanel.appendChild(format.container.cloneNode(true))
-                hostContainer.appendChild(floatingPanel)
+              const syncFormatPanel = () => {
+                const show = graph.getSelectionCount() > 0
+                floatingPanel.style.display = show ? 'block' : 'none'
+                formatContainer.style.display = show ? 'block' : 'none'
               }
-
-              // 选择变化时显示/隐藏面板
-              graph.getSelectionModel().addListener('change', () => {
-                const count = graph.getSelectionCount()
-                floatingPanel.style.display = count > 0 ? 'block' : 'none'
-              })
+              // 点击空白处会清空 selection，点击元素会选中 —— 一个监听全覆盖
+              graph
+                .getSelectionModel()
+                .addListener(window.mxEvent.CHANGE, syncFormatPanel)
+              syncFormatPanel()
             }
 
             // Refresh UI
@@ -589,9 +767,30 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             // /diagram absolutely inside this container. Without it they default to
             // static and fall to the bottom.
             'geEditor relative h-full min-h-0 w-full overflow-hidden',
+            // 绘图面板默认隐藏（见 CHROME_HIDING_CSS 中的 .wedraw-sidebar-hidden 规则）
+            !sidebarOpen && 'wedraw-sidebar-hidden',
             className,
           )}
         >
+          {/* 绘图面板（左侧形状栏）开关。toolbar 高 38px，按钮放在其下方画布左上角 */}
+          {isReady && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSidebarOpen((v) => !v)}
+                  className={cn(
+                    'absolute left-2 top-12 z-20 h-8 w-8 p-0 shadow-md',
+                    sidebarOpen && 'bg-primary text-primary-foreground',
+                  )}
+                >
+                  <Shapes className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{sidebarOpen ? '隐藏绘图面板' : '显示绘图面板'}</TooltipContent>
+            </Tooltip>
+          )}
           {/* drawio mounts itself into this div via App.main's createUi factory */}
           {!isReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80">

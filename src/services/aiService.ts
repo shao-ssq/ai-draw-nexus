@@ -4,9 +4,9 @@ import type { PayloadMessage, ChatRequest } from '@/types'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 /**
- * Parse SSE data line and extract content
+ * Parse SSE data line and extract content or event type
  */
-function parseSSELine(line: string): string | null {
+function parseSSELine(line: string): { type: 'content' | 'thinking' | 'done' | 'skip'; content?: string; inThinking?: boolean } {
   let data = line
 
   // Handle SSE format (data: prefix)
@@ -14,29 +14,33 @@ function parseSSELine(line: string): string | null {
     data = line.slice(6)
   }
 
-  if (data === '[DONE]') return null
+  if (data === '[DONE]') return { type: 'done' }
 
   try {
     const parsed = JSON.parse(data)
+    // Handle thinking status event
+    if (parsed.type === 'thinking') {
+      return { type: 'thinking', inThinking: parsed.inThinking }
+    }
     // Handle OpenAI format
     if (parsed.choices?.[0]?.delta?.content) {
-      return parsed.choices[0].delta.content
+      return { type: 'content', content: parsed.choices[0].delta.content }
     }
     // Handle simple format
     if (parsed.content) {
-      return parsed.content
+      return { type: 'content', content: parsed.content }
     }
     // Handle text field
     if (parsed.text) {
-      return parsed.text
+      return { type: 'content', content: parsed.text }
     }
   } catch {
     // Not JSON, return raw data if it has content
     if (data.trim()) {
-      return data
+      return { type: 'content', content: data }
     }
   }
-  return null
+  return { type: 'skip' }
 }
 
 /**
@@ -70,13 +74,15 @@ export const aiService = {
    * @param onChunk - Callback for each content chunk
    * @param thinking - 'enabled' | 'disabled'，控制模型思考开关（默认 disabled）
    * @param onComplete - Optional callback when streaming completes
+   * @param onThinking - Optional callback when thinking content is detected
    * @returns The full accumulated content
    */
   async streamChat(
     messages: PayloadMessage[],
     onChunk: (chunk: string, accumulated: string) => void,
     thinking: 'enabled' | 'disabled' = 'disabled',
-    onComplete?: (content: string) => void
+    onComplete?: (content: string) => void,
+    onThinking?: (isThinking: boolean) => void
   ): Promise<string> {
     const request: ChatRequest = { messages, stream: true, thinking } as ChatRequest & { stream: boolean }
 
@@ -115,26 +121,31 @@ export const aiService = {
           const trimmedLine = line.trim()
           if (!trimmedLine) continue
 
-          const content = parseSSELine(trimmedLine)
-          if (content) {
-            fullContent += content
-            onChunk(content, fullContent)
+          const result = parseSSELine(trimmedLine)
+          if (result.type === 'thinking') {
+            onThinking?.(result.inThinking ?? false)
+          } else if (result.type === 'content' && result.content) {
+            fullContent += result.content
+            onChunk(result.content, fullContent)
           }
         }
       }
 
       // Process remaining buffer
       if (buffer.trim()) {
-        const content = parseSSELine(buffer.trim())
-        if (content) {
-          fullContent += content
-          onChunk(content, fullContent)
+        const result = parseSSELine(buffer.trim())
+        if (result.type === 'thinking') {
+          onThinking?.(result.inThinking ?? false)
+        } else if (result.type === 'content' && result.content) {
+          fullContent += result.content
+          onChunk(result.content, fullContent)
         }
       }
     } finally {
       reader.releaseLock()
     }
 
+    onThinking?.(false)
     onComplete?.(fullContent)
     return fullContent
   },

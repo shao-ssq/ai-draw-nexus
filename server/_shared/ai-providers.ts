@@ -16,15 +16,37 @@ export function resolveEndpoint(baseUrl: string, suffix: string): string {
 
 /**
  * 构造 OpenAI 兼容请求体的扩展字段。
- * - AI_THINKING=disabled → thinking:{type:"disabled"}（GLM 实测首字节 <1s）
- * - AI_THINKING=enabled  → thinking:{type:"enabled"}
- * - 未设置 → 不加该字段（保持模型默认行为）
- * 仅对 GLM 等支持 thinking 字段的兼容端点生效；标准 OpenAI 会忽略未知字段。
+ * - AI_THINKING=enabled  → thinking:{type:"adaptive"}
+ * - AI_THINKING=disabled → thinking:{type:"disabled"}
+ * - 未设置              → 不加该字段（保持模型默认行为）
+ *
+ * 注意：部分兼容端点在 stream:true + thinking:disabled 组合下会返回 400/500，
+ *       但 MiniMax 等主流端点支持此参数。遇到 400/500 时可改回不发送。
  */
 export function buildThinkingParam(env: Env): Record<string, unknown> {
-  const t = (env.AI_THINKING || 'disabled').toLowerCase()
-  if (t === 'enabled') return { thinking: { type: 'enabled' } }
+  const t = (env.AI_THINKING || '').toLowerCase()
+  if (t === 'enabled') return { thinking: { type: 'adaptive' } }
   if (t === 'disabled') return { thinking: { type: 'disabled' } }
+  return {}
+}
+
+/**
+ * Anthropic extended thinking 字段。
+ * 启用时必须指定 budget_tokens，且 max_tokens 需 >= budget_tokens。
+ * - 'enabled'  → { thinking: { type: 'enabled', budget_tokens } }
+ * - 'disabled' → { thinking: { type: 'disabled' } }（Anthropic 要求显式关闭，避免走 default）
+ * - 未设置     → {}（保留模型默认行为）
+ */
+export function buildAnthropicThinkingParam(env: Env, maxTokens: number): Record<string, unknown> {
+  const t = (env.AI_THINKING || '').toLowerCase()
+  if (t === 'enabled') {
+    // budget_tokens 取 maxTokens 的 60%，留足余量给实际输出
+    const budget = Math.max(1024, Math.floor(maxTokens * 0.6))
+    return { thinking: { type: 'enabled', budget_tokens: budget } }
+  }
+  if (t === 'disabled') {
+    return { thinking: { type: 'disabled' } }
+  }
   return {}
 }
 
@@ -98,6 +120,7 @@ export async function callAnthropic(messages: Message[], env: Env): Promise<stri
       max_tokens: 64000,
       system: typeof systemMessage?.content === 'string' ? systemMessage.content : '',
       messages: anthropicMessages,
+      ...buildAnthropicThinkingParam(env, 64000),
     }),
   })
 

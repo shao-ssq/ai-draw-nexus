@@ -274,6 +274,8 @@ body {
   margin: 0;
   padding: 12px;
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 320px;
   font-family: "Fira Code", Consolas, Monaco, monospace;
   font-size: 12.5px;
   color: #1e293b;
@@ -383,6 +385,8 @@ body {
   font-size: 13px;
   line-height: 1.6;
   min-width: 0;
+  max-height: 400px;
+  overflow-y: auto;
   word-break: break-word;
 }
 .ai-placeholder {
