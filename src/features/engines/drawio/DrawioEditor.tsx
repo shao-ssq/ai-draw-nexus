@@ -17,7 +17,7 @@ import {
   useState,
 } from 'react'
 import Editor from '@monaco-editor/react'
-import { Check, Copy, Play, Shapes, Undo2, X } from 'lucide-react'
+import { Check, Circle, Copy, Diamond, MoveRight, Play, Redo2, RotateCcw, Shapes, Square, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -61,6 +61,9 @@ const CHROME_HIDING_CSS = `
   /* 工具栏"格式"开关（Ctrl+Shift+P）：样式已改为浮动面板随选中自动显隐，
      该按钮既冗余又会按旧逻辑切换 grid 占位宽度，直接隐藏 */
   .geButton[title="格式 (Ctrl+Shift+P)"] { display: none !important; }
+  /* 顶部工具栏整体移除 —— 形状按钮改为左侧竖排悬浮条。
+     工具栏是 grid 第 2 行（38px），display:none 后该行塌缩，画布自动上移填满 */
+  #drawio-host > .geToolbarContainer { display: none !important; }
   /* 绘图面板（左侧形状栏 + 分隔条）默认隐藏。grid 列是 min-content，
      隐藏后画布自动占满宽度；点击浮动按钮切换 host 上的类名。 */
   #drawio-host.wedraw-sidebar-hidden > .geSidebarContainer:not(.geFormatContainer),
@@ -75,6 +78,10 @@ const CHROME_HIDING_CSS = `
     scrollbar-gutter: stable;
   }
   #floating-format-panel > .geFormatContainer { border-left: none !important; }
+  /* 隐藏样式面板底部的"属性/值"栏目：表格是 table.geProperties，
+     其所在 .geFormatSection 自带 border-top，整段隐藏避免留下一条孤立横线 */
+  #floating-format-panel .geFormatSection:has(table.geProperties) { display: none !important; }
+  #floating-format-panel table.geProperties { display: none !important; }
 
   /* ====== 修复画板偏移 & 滚动条 ======
      drawio 自带的 grapheditor.css 在 .geEditor > .geDiagramContainer 上硬编码
@@ -177,6 +184,7 @@ function downloadBlob(href: string, filename: string) {
 interface DrawioGlobalSlot {
   app: any | null
   changeHandler: ((xml: string) => void) | null
+  zoomHandler: ((percent: number) => void) | null
 }
 declare global {
   interface Window {
@@ -197,6 +205,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     const [isReady, setIsReady] = useState(false)
     const [showCodePanel, setShowCodePanel] = useState(false)
     const [sidebarOpen, setSidebarOpen] = useState(false)
+    const [zoomPercent, setZoomPercent] = useState(100)
     const [copied, setCopied] = useState(false)
     const [editedCode, setEditedCode] = useState(data)
     const [hasChanges, setHasChanges] = useState(false)
@@ -216,8 +225,22 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       const slot: DrawioGlobalSlot = (window.__wedrawDrawio ??= {
         app: null,
         changeHandler: null,
+        zoomHandler: null,
       })
       const cancelled = { v: false }
+      // 缩放百分比通过 slot 回传（view SCALE 监听在 initializeCanvas 中只挂一次，
+      // 跨 remount 复用 EditorUi 时仍能把最新缩放值路由到当前挂载的组件）
+      slot.zoomHandler = (p: number) => setZoomPercent(p)
+
+      // 屏蔽 Ctrl+S：drawio 自带的保存（弹下载/对话框）与 WeDraw 的 IndexedDB
+      // 自动保存冲突，capture 阶段拦截，先于 drawio 的 document 级按键监听触发
+      const swallowCtrlS = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }
+      window.addEventListener('keydown', swallowCtrlS, true)
 
       // 0) Set up MutationObserver BEFORE drawio loads to catch all body additions
       const hostDiv = containerHostRef.current
@@ -298,9 +321,12 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       if (slot.app) {
         // Wire onChange into the existing listener (re-attached in step 5).
         slot.changeHandler = (xml: string) => onChange?.(xml)
+        const scale = slot.app.editor?.graph?.view?.scale
+        if (typeof scale === 'number') setZoomPercent(Math.round(scale * 100))
         setIsReady(true)
         return () => {
           cancelled.v = true
+          window.removeEventListener('keydown', swallowCtrlS, true)
           // Do NOT remove scripts / <base> / <style>: they must survive
           // remounts so the next mount can reuse the EditorUi. Real cleanup
           // happens on full page reload.
@@ -447,6 +473,17 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               graph.zoomTo(1, false)
             }
 
+            // 监听缩放变化，把百分比回传给 React（左下角悬浮缩放条显示用）
+            const updateZoom = () => {
+              slot.zoomHandler?.(Math.round(graph.view.scale * 100))
+            }
+            // initializeCanvas 有重试逻辑，防止重复挂监听
+            if (!graph.view.__wedrawZoomListener) {
+              graph.view.__wedrawZoomListener = true
+              graph.view.addListener(window.mxEvent.SCALE, updateZoom)
+            }
+            updateZoom()
+
             // Keep page view disabled by default and synchronize the menu state.
             drawioUi.setPageVisible(false)
 
@@ -463,17 +500,25 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             if (formatContainer && diagramContainer) {
               const floatingPanel = document.createElement('div')
               floatingPanel.id = 'floating-format-panel'
+              // 上下居中于画布，并整体上移 16px；底部预留 40px 间距
               floatingPanel.style.cssText =
-                'position:absolute;right:10px;top:10px;width:240px;z-index:1000;max-height:calc(100% - 20px);display:none;'
+                'position:absolute;right:10px;top:50%;transform:translateY(calc(-50% - 16px));width:240px;z-index:1000;max-height:calc(100% - 30px);display:none;'
               diagramContainer.appendChild(floatingPanel)
               floatingPanel.appendChild(formatContainer)
               formatContainer.style.width = '240px'
-              formatContainer.style.maxHeight = 'calc(100vh - 140px)'
+              formatContainer.style.boxSizing = 'border-box'
+              // 滚动区底部留白，避免最后一行（如"属性/值"）紧贴面板边框
+              formatContainer.style.paddingBottom = '12px'
 
               const syncFormatPanel = () => {
                 const show = graph.getSelectionCount() > 0
                 floatingPanel.style.display = show ? 'block' : 'none'
                 formatContainer.style.display = show ? 'block' : 'none'
+                if (show) {
+                  // % 对 auto 高度的父级不生效，按画布实际高度动态计算内层滚动区高度，
+                  // 比外层 max-height 再少 10px，保证底部边距可见
+                  formatContainer.style.maxHeight = `${diagramContainer.clientHeight - 40}px`
+                }
               }
               // 点击空白处会清空 selection，点击元素会选中 —— 一个监听全覆盖
               graph
@@ -553,6 +598,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
       return () => {
         cancelled.v = true
+        window.removeEventListener('keydown', swallowCtrlS, true)
         // Keep <base>, <style>, and <script>s alive across remounts.
         // On full page reload everything is GC'd naturally.
       }
@@ -717,6 +763,83 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       [exportAsSvg, exportAsPng, exportAsSource, getThumbnail],
     )
 
+    // ---------- Zoom controls ----------
+
+    const getGraph = useCallback((): any => {
+      return window.__wedrawDrawio?.app?.editor?.graph ?? null
+    }, [])
+
+    const handleZoomIn = useCallback(() => {
+      getGraph()?.zoomIn()
+    }, [getGraph])
+
+    const handleZoomOut = useCallback(() => {
+      getGraph()?.zoomOut()
+    }, [getGraph])
+
+    const handleZoomReset = useCallback(() => {
+      getGraph()?.zoomActual()
+    }, [getGraph])
+
+    const handleUndo = useCallback(() => {
+      window.__wedrawDrawio?.app?.undo()
+    }, [])
+
+    const handleRedo = useCallback(() => {
+      window.__wedrawDrawio?.app?.redo()
+    }, [])
+
+    // ---------- Shape insertion ----------
+
+    const insertShape = useCallback(
+      (kind: 'rect' | 'ellipse' | 'rhombus' | 'edge') => {
+        const graph = getGraph()
+        if (!graph) return
+        const parent = graph.getDefaultParent()
+        // 插入到当前视口中心
+        const pt =
+          typeof graph.getCenterInsertPoint === 'function'
+            ? graph.getCenterInsertPoint()
+            : { x: 60, y: 60 }
+        const model = graph.getModel()
+        let inserted: any = null
+        model.beginUpdate()
+        try {
+          if (kind === 'edge') {
+            // 无端点连线：手工指定两个端点，画一条可见的正交连接线
+            inserted = graph.insertEdge(
+              parent, null, '', null, null,
+              'edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;',
+            )
+            inserted.geometry.setTerminalPoint(
+              new window.mxPoint(pt.x - 80, pt.y), true,
+            )
+            inserted.geometry.setTerminalPoint(
+              new window.mxPoint(pt.x + 80, pt.y), false,
+            )
+            inserted.geometry.relative = true
+          } else {
+            const style =
+              kind === 'ellipse'
+                ? 'ellipse;whiteSpace=wrap;html=1;'
+                : kind === 'rhombus'
+                  ? 'rhombus;whiteSpace=wrap;html=1;'
+                  : 'rounded=0;whiteSpace=wrap;html=1;'
+            const w = kind === 'rect' ? 120 : 80
+            const h = kind === 'rect' ? 60 : 80
+            inserted = graph.insertVertex(
+              parent, null, '', pt.x - w / 2, pt.y - h / 2, w, h, style,
+            )
+          }
+        } finally {
+          model.endUpdate()
+        }
+        // 选中新插入的元素（同时触发右侧浮动样式面板）
+        if (inserted) graph.setSelectionCell(inserted)
+      },
+      [getGraph],
+    )
+
     // ---------- Code panel handlers ----------
 
     const handleCopyCode = useCallback(async () => {
@@ -772,26 +895,121 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             className,
           )}
         >
-          {/* 绘图面板（左侧形状栏）开关。toolbar 高 38px，按钮放在其下方画布左上角 */}
+          {/* 绘图面板（左侧形状栏）开关，放在画布左上角 */}
           {isReady && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
                   onClick={() => setSidebarOpen((v) => !v)}
                   className={cn(
-                    'absolute left-2 top-12 z-20 h-8 w-8 p-0 shadow-md',
-                    sidebarOpen && 'bg-primary text-primary-foreground',
+                    'absolute left-3 top-3 z-20 h-9 w-9 rounded-lg border border-border/50 bg-surface/90 p-0 text-muted shadow-md backdrop-blur-md hover:bg-black/5 hover:text-primary',
+                    sidebarOpen && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
                   )}
                 >
-                  <Shapes className="h-4 w-4" />
+                  <Shapes className="h-[18px] w-[18px]" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>{sidebarOpen ? '隐藏绘图面板' : '显示绘图面板'}</TooltipContent>
             </Tooltip>
           )}
           {/* drawio mounts itself into this div via App.main's createUi factory */}
+          {/* 形状工具条 - 左侧竖排悬浮（替换原生顶部工具栏，样式对齐 Mermaid） */}
+          {isReady && (
+            <div className="absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 p-1 shadow-md backdrop-blur-md">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => insertShape('rect')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Square className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>矩形</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => insertShape('ellipse')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Circle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>圆形</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => insertShape('rhombus')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Diamond className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>菱形</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={() => insertShape('edge')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <MoveRight className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>连接线</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
+          {/* 缩放/撤销/重做控制 - 左下角悬浮（样式对齐 Mermaid 引擎） */}
+          {isReady && (
+            <div className="absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 px-1 py-1 shadow-md backdrop-blur-md">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>缩小</TooltipContent>
+              </Tooltip>
+
+              <span className="min-w-[2.5rem] text-center text-[11px] text-muted">
+                {zoomPercent}%
+              </span>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>放大</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomReset} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>重置视图</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleUndo} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>撤销 (Ctrl+Z)</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleRedo} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Redo2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>重做 (Ctrl+Y)</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           {!isReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/80">
               <div className="text-center">

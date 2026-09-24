@@ -16,7 +16,10 @@ declare global {
     mxImageBasePath: string
     mxUtils: any
     mxResources: any
-    mxEvent: { CHANGE: string; NOTIFY: string }
+    mxEvent: { CHANGE: string; NOTIFY: string; SCALE: string }
+    mxCell: any
+    mxGeometry: any
+    mxPoint: any
     Draw: any
     uiTheme: string | null
     urlParams: Record<string, string>
