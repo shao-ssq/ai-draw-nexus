@@ -160,6 +160,17 @@ const CHROME_HIDING_CSS = `
     max-width: 100% !important;
     overflow-x: hidden !important;
   }
+
+  /* ====== 浮动控件条内的 React 按钮 ======
+     grapheditor.css 有一条 :where(.geEditor button) { border: 1px solid; padding: 2px }
+     的兜底规则 —— 所有挂在 #drawio-host（带 geEditor 类）里的 <button> 都会被
+     加上边框。Mermaid 引擎的容器没有这个类，所以同样的 Button 组件在 Mermaid
+     下无边框。这里只清除边框和内边距，不碰 background —— :where() 特异性为 0，
+     悬停时 Tailwind 的 hover:bg-border（ghost 按钮自带）自然生效，与 Mermaid 一致。 */
+  #drawio-host .wedraw-float-bar button {
+    border: none !important;
+    padding: 0 !important;
+  }
 `
 
 function downloadBlob(href: string, filename: string) {
@@ -904,7 +915,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                   size="sm"
                   onClick={() => setSidebarOpen((v) => !v)}
                   className={cn(
-                    'absolute left-3 top-3 z-20 h-9 w-9 rounded-lg border border-border/50 bg-surface/90 p-0 text-muted shadow-md backdrop-blur-md hover:bg-black/5 hover:text-primary',
+                    'wedraw-float-bar absolute left-3 top-3 z-20 h-9 w-9 rounded-lg border border-border/50 bg-surface/90 p-0 text-muted shadow-md backdrop-blur-md hover:bg-black/5 hover:text-primary',
                     sidebarOpen && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
                   )}
                 >
@@ -917,7 +928,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           {/* drawio mounts itself into this div via App.main's createUi factory */}
           {/* 形状工具条 - 左侧竖排悬浮（替换原生顶部工具栏，样式对齐 Mermaid） */}
           {isReady && (
-            <div className="absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 p-1 shadow-md backdrop-blur-md">
+            <div className="wedraw-float-bar absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 p-1 shadow-md backdrop-blur-md">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" onClick={() => insertShape('rect')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
@@ -956,13 +967,13 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             </div>
           )}
 
-          {/* 缩放/撤销/重做控制 - 左下角悬浮（样式对齐 Mermaid 引擎） */}
+          {/* 缩放/撤销/重做控制 - 左下角悬浮（样式完全对齐 Mermaid 引擎） */}
           {isReady && (
-            <div className="absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 px-1 py-1 shadow-md backdrop-blur-md">
+            <div className="wedraw-float-bar absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-md bg-surface/80 px-0.5 py-0.5 shadow-sm backdrop-blur-sm">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
-                    <ZoomOut className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
+                    <ZoomOut className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>缩小</TooltipContent>
@@ -974,26 +985,30 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
-                    <ZoomIn className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-6 w-6 p-0">
+                    <ZoomIn className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>放大</TooltipContent>
               </Tooltip>
 
+              <div className="mx-0.5 h-3.5 w-px bg-border" />
+
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleZoomReset} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
-                    <RotateCcw className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" onClick={handleZoomReset} className="h-6 w-6 p-0">
+                    <RotateCcw className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>重置视图</TooltipContent>
               </Tooltip>
 
+              <div className="mx-0.5 h-3.5 w-px bg-border" />
+
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleUndo} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
-                    <Undo2 className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" onClick={handleUndo} className="h-6 w-6 p-0">
+                    <Undo2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>撤销 (Ctrl+Z)</TooltipContent>
@@ -1001,8 +1016,8 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleRedo} className="h-7 w-7 rounded-md p-0 text-muted hover:bg-black/5 hover:text-primary">
-                    <Redo2 className="h-4 w-4" />
+                  <Button variant="ghost" size="sm" onClick={handleRedo} className="h-6 w-6 p-0">
+                    <Redo2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>重做 (Ctrl+Y)</TooltipContent>
