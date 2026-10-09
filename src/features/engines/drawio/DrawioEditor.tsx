@@ -17,7 +17,7 @@ import {
   useState,
 } from 'react'
 import Editor from '@monaco-editor/react'
-import { Check, Circle, Copy, Diamond, MoveRight, Play, Redo2, RotateCcw, Shapes, Square, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Check, Circle, Copy, Diamond, MoveRight, Play, Redo2, Shapes, Square, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -151,6 +151,94 @@ const CHROME_HIDING_CSS = `
     margin: 0 !important;
     padding: 0 !important;
     border: 0 !important;
+  }
+
+  /* ====== 左侧绘图面板（形状库）改为浮动卡片 ======
+     参考点击图形弹出的 #floating-format-panel：圆角 + 边框 + 投影 + 毛玻璃底色。
+     位置放在左侧悬浮工具条右边（工具条 left-3=12px + 宽 36px + 间距 6px），
+     上下留出边距。position:absolute 使其脱离 grid 流，画布始终占满宽度。 */
+  #drawio-host > .geSidebarContainer:not(.geFormatContainer) {
+    position: absolute !important;
+    left: 54px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    height: 70% !important;
+    width: 320px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    border: 1px solid light-dark(#e5e7eb, #444) !important;
+    border-radius: 12px;
+    background: light-dark(#f8f9fa, var(--ge-dark-panel-color, #2b2b2b)) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding: 8px !important;
+    z-index: 15;
+  }
+  /* 分隔条始终隐藏：sidebar 浮动后没有可拖拽的分栏意义，
+     且 grid min-content 列会让它留在左边缘碍事 */
+  #drawio-host > .geHsplit { display: none !important; }
+
+  /* 隐藏"所有图形"面板顶部的搜索框 —— 搜索条目已从 sidebar.entries 移除，
+     留着一个不能用的搜索框只会占高度 */
+  #drawio-host .geSearchSidebar { display: none !important; }
+
+  /* ====== "所有图形"浮动面板内部美化 ======
+     drawio 默认样式偏厚重（13px 黑色分区标题、44px 高亮主色底栏、默认滚动条），
+     这里统一收窄、弱化，与左侧悬浮工具条的视觉密度对齐。 */
+  /* 图形区分区标题（基本/箭头/流程图…）：小字号 + 弱化颜色 + 图标缩小 + 悬停底 */
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geTitle {
+    font-size: 11px !important;
+    font-weight: 600;
+    color: light-dark(#6b7280, #9ca3af);
+    background-size: 14px !important;
+    background-position: 6px 50% !important;
+    padding: 5px 6px 5px 24px !important;
+    margin: 2px !important;
+    border-radius: 6px;
+  }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geTitle:hover {
+    background-color: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.06));
+    color: light-dark(#374151, #d1d5db);
+  }
+  /* 图形项：去掉默认 0.75 透明度，悬停放大 + 底色高亮 */
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebar .geItem {
+    opacity: 1;
+    border-radius: 6px;
+  }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebar .geItem:hover {
+    background: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.08));
+    transform: scale(1.06);
+  }
+  /* 内边距收紧，底部多留滚动余量 —— "+更多图形"底栏是绝对定位悬浮在
+     面板底部的，内容滚到底部时要让出它的 40px 高度 */
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebar {
+    padding: 2px 4px 44px !important;
+  }
+  /* "+更多图形"底栏：从 44px 高亮主色按钮改为低调的幽灵条 */
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebarFooter {
+    height: 40px;
+    padding: 6px 10px 4px;
+    box-sizing: border-box;
+  }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebarFooter .geBtn {
+    width: 100%;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 12px;
+    background: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.06)) !important;
+    color: light-dark(#6b7280, #9ca3af);
+  }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer) .geSidebarFooter .geBtn:hover {
+    background: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1)) !important;
+    color: light-dark(#374151, #d1d5db);
+  }
+  /* 细圆角滚动条 */
+  #drawio-host .geSidebarContainer:not(.geFormatContainer)::-webkit-scrollbar { width: 6px; }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer)::-webkit-scrollbar-track { background: transparent; }
+  #drawio-host .geSidebarContainer:not(.geFormatContainer)::-webkit-scrollbar-thumb {
+    background: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.15));
+    border-radius: 3px;
   }
 
   /* 浮动样式面板内部使用 overflow-y:auto 的 .geFormatContainer，
@@ -479,6 +567,13 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             graph.zoomActual()
             graph.centerZoom = false
 
+            // 空白处左键拖拽 = 平移画布（替代默认的框选），与 Mermaid 引擎交互一致。
+            // panning 默认已启用（Graph 构造时 setPanning(true)），这里只把左键
+            // 交给平移；拖拽落在元素上时仍是移动元素，不受影响。
+            if (graph.panningHandler) {
+              graph.panningHandler.useLeftButtonForPanning = true
+            }
+
             // Use zoomTo to ensure 100%
             if (typeof graph.zoomTo === 'function') {
               graph.zoomTo(1, false)
@@ -497,6 +592,34 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
             // Keep page view disabled by default and synchronize the menu state.
             drawioUi.setPageVisible(false)
+
+            // 从"所有图形"面板和"+更多图形"对话框中移除"搜索"与"便签本"：
+            // 对话框（MoreShapesDialog）直接渲染 sidebar.entries 的分区数据，
+            // 按 id 过滤这份数组即可两处同步移除；便签本在启动时会被异步自动
+            // 加载（toggleScratchpad），closeLibrary 关掉它的图形库面板。
+            // 操作幂等，立即执行一次 + 延迟兜底一次以覆盖异步加载时序。
+            const stripSearchAndScratchpad = () => {
+              try {
+                const sidebar = drawioUi.sidebar
+                if (sidebar && Array.isArray(sidebar.entries)) {
+                  for (const section of sidebar.entries) {
+                    if (Array.isArray(section?.entries)) {
+                      section.entries = section.entries.filter(
+                        (entry: any) =>
+                          entry?.id !== 'search' && entry?.id !== '.scratchpad',
+                      )
+                    }
+                  }
+                }
+                if (drawioUi.scratchpad) {
+                  drawioUi.closeLibrary(drawioUi.scratchpad)
+                }
+              } catch (e) {
+                console.error('[DrawioEditor] strip search/scratchpad failed', e)
+              }
+            }
+            stripSearchAndScratchpad()
+            setTimeout(stripSearchAndScratchpad, 600)
 
             // 隐藏 grid 中右侧格式容器的占位（min-content 列自动塌缩，画布占满）
             const formatContainer = drawioUi.formatContainer
@@ -618,6 +741,27 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       // drawio listeners.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    // 点击画板任意位置时自动收起"所有图形"浮动面板。
+    // 必须监听 pointerdown 而非 mousedown：新版 Chromium 走 Pointer Events，
+    // drawio 在 pointerdown 上 preventDefault 会抑制兼容性 mousedown 的合成，
+    // mousedown 监听器永远收不到真实点击。document 捕获阶段 + 每次事件实时
+    // 查询最新的 graph.container（drawio setFileData 时会重建 graph，缓存引用
+    // 会失效）。面板自身、右侧浮动样式面板、左侧悬浮工具条都在
+    // graph.container 之外，不会误触；从面板拖图形到画板时 pointerdown 发生在
+    // 面板上，同样不受影响。
+    useEffect(() => {
+      if (!isReady) return
+      const hideSidebar = (e: PointerEvent) => {
+        const container: HTMLElement | undefined =
+          window.__wedrawDrawio?.app?.editor?.graph?.container
+        if (container && e.target instanceof Node && container.contains(e.target)) {
+          setSidebarOpen(false)
+        }
+      }
+      document.addEventListener('pointerdown', hideSidebar, true)
+      return () => document.removeEventListener('pointerdown', hideSidebar, true)
+    }, [isReady])
 
     // Apply `data` prop changes once drawio is ready.
     useEffect(() => {
@@ -788,10 +932,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       getGraph()?.zoomOut()
     }, [getGraph])
 
-    const handleZoomReset = useCallback(() => {
-      getGraph()?.zoomActual()
-    }, [getGraph])
-
     const handleUndo = useCallback(() => {
       window.__wedrawDrawio?.app?.undo()
     }, [])
@@ -892,6 +1032,10 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     return (
       <TooltipProvider>
+        {/* 外层包装：源码面板挂在 geEditor 之外，避免 grapheditor.css 里
+            无 @layer 的 :where(.geEditor button) 兜底规则压掉 Button 的
+            Tailwind 类（未分层样式优先级高于 Tailwind v4 的 @layer utilities） */}
+        <div className={cn('relative h-full min-h-0 w-full overflow-hidden', className)}>
         <div
           ref={containerHostRef}
           id="drawio-host"
@@ -900,31 +1044,11 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             // { position: absolute; ... }`) actually positions the toolbar/sidebar
             // /diagram absolutely inside this container. Without it they default to
             // static and fall to the bottom.
-            'geEditor relative h-full min-h-0 w-full overflow-hidden',
+            'geEditor absolute inset-0 h-full w-full overflow-hidden',
             // 绘图面板默认隐藏（见 CHROME_HIDING_CSS 中的 .wedraw-sidebar-hidden 规则）
             !sidebarOpen && 'wedraw-sidebar-hidden',
-            className,
           )}
         >
-          {/* 绘图面板（左侧形状栏）开关，放在画布左上角 */}
-          {isReady && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSidebarOpen((v) => !v)}
-                  className={cn(
-                    'wedraw-float-bar absolute left-3 top-3 z-20 h-9 w-9 rounded-lg border border-border/50 bg-surface/90 p-0 text-muted shadow-md backdrop-blur-md hover:bg-black/5 hover:text-primary',
-                    sidebarOpen && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
-                  )}
-                >
-                  <Shapes className="h-[18px] w-[18px]" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{sidebarOpen ? '隐藏绘图面板' : '显示绘图面板'}</TooltipContent>
-            </Tooltip>
-          )}
           {/* drawio mounts itself into this div via App.main's createUi factory */}
           {/* 形状工具条 - 左侧竖排悬浮（替换原生顶部工具栏，样式对齐 Mermaid） */}
           {isReady && (
@@ -964,6 +1088,25 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                 </TooltipTrigger>
                 <TooltipContent>连接线</TooltipContent>
               </Tooltip>
+
+              <div className="my-0.5 h-px w-4 bg-border" />
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSidebarOpen((v) => !v)}
+                    className={cn(
+                      'h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary',
+                      sidebarOpen && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
+                    )}
+                  >
+                    <Shapes className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{sidebarOpen ? '隐藏所有图形' : '所有图形'}</TooltipContent>
+              </Tooltip>
             </div>
           )}
 
@@ -996,17 +1139,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={handleZoomReset} className="h-6 w-6 p-0">
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>重置视图</TooltipContent>
-              </Tooltip>
-
-              <div className="mx-0.5 h-3.5 w-px bg-border" />
-
-              <Tooltip>
-                <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" onClick={handleUndo} className="h-6 w-6 p-0">
                     <Undo2 className="h-3.5 w-3.5" />
                   </Button>
@@ -1033,9 +1165,18 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               </div>
             </div>
           )}
+        </div>
 
           {showCodePanel && (
-            <div className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col border border-border bg-surface shadow-lg">
+            <div
+              className="absolute bottom-4 right-4 z-10 w-96 max-h-[70%] flex flex-col overflow-hidden rounded-xl border border-[#e5e7eb] bg-surface shadow-lg select-text"
+              // 阻断 keydown 冒泡到 document/window：drawio 在全局注册了快捷键
+              // （Ctrl+A 全选图形、Ctrl+Z 撤销图形等），不拦截的话编辑代码时
+              // 按键会穿透到画板。这里在 Monaco 处理完事件后截断冒泡，
+              // 让代码面板内的快捷键（Ctrl+A 全选文本、Ctrl+Z 撤销输入）
+              // 只作用于编辑器本身，与 Mermaid 引擎行为一致。
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between border-b border-border px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Draw.io XML 源码</span>
@@ -1050,7 +1191,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                         variant="ghost"
                         size="sm"
                         onClick={handleCopyCode}
-                        className="h-7 w-7 p-0"
+                        className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                       >
                         {copied ? (
                           <Check className="h-3.5 w-3.5 text-green-500" />
@@ -1065,7 +1206,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowCodePanel(false)}
-                    className="h-7 w-7 p-0"
+                    className="h-7 w-7 rounded-lg border border-[#e5e7eb] p-0"
                   >
                     <X className="h-3.5 w-3.5" />
                   </Button>
@@ -1081,7 +1222,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                   options={{
                     minimap: { enabled: false },
                     fontSize: 13,
-                    lineNumbers: 'on',
+                    lineNumbers: 'off',
                     scrollBeyondLastLine: false,
                     wordWrap: 'on',
                     automaticLayout: true,
@@ -1102,7 +1243,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                       size="sm"
                       onClick={handleResetCode}
                       disabled={!hasChanges}
-                      className="gap-1.5"
+                      className="gap-1.5 rounded-lg border border-[#e5e7eb]"
                     >
                       <Undo2 className="h-3.5 w-3.5" />
                       <span className="text-xs">重置</span>
@@ -1117,7 +1258,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                       size="sm"
                       onClick={handleApplyCode}
                       disabled={!hasChanges || !editedCode.trim()}
-                      className="gap-1.5"
+                      className="gap-1.5 rounded-lg border border-surface/30"
                     >
                       <Play className="h-3.5 w-3.5" />
                       <span className="text-xs">应用</span>
