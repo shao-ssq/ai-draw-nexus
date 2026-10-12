@@ -263,19 +263,19 @@ export function ProjectsPage() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent className="max-w-xs rounded-xl p-4 text-sm">
+        <DialogContent className="max-w-xs rounded-xl p-5 text-base">
           <DialogHeader>
-            <DialogTitle className="text-sm">删除项目</DialogTitle>
-            <DialogDescription className='my-2 text-xs'>
+            <DialogTitle className="text-base">删除项目</DialogTitle>
+            <DialogDescription className='my-2 text-sm'>
               确定要删除 &quot;{deleteTarget?.title}&quot; 吗？此操作无法撤销。
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="mt-2 gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setDeleteTarget(null)}
-              className="rounded-full text-xs"
+              className="rounded-full text-sm"
             >
               取消
             </Button>
@@ -283,7 +283,7 @@ export function ProjectsPage() {
               size="sm"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="rounded-full bg-red-600 text-surface text-xs hover:bg-red-700"
+              className="rounded-full bg-red-600 text-surface text-sm hover:bg-red-700"
             >
               {isDeleting ? '删除中...' : '删除'}
             </Button>

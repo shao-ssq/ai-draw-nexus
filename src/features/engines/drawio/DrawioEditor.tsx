@@ -17,7 +17,7 @@ import {
   useState,
 } from 'react'
 import Editor from '@monaco-editor/react'
-import { Check, Circle, Copy, Diamond, MoveRight, Play, Redo2, Shapes, Square, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Check, Circle, Copy, Diamond, MoveRight, Play, Redo2, Shapes, Square, Type, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -273,6 +273,45 @@ function downloadBlob(href: string, filename: string) {
   }
 }
 
+/**
+ * 把复用中的 EditorUi 画布重置为空白状态。
+ * 新建项目没有历史版本（data 为空），但 EditorUi 是跨项目复用的全局单例，
+ * 不主动清空的话新项目会显示上一个项目的内容。
+ * 与 initializeCanvas 里清默认页的循环不同：这里不限制 isVertex，
+ * root 的子节点（layer / 残留 cell）全部移除，保证彻底清空。
+ */
+function resetCanvas(ui: any): void {
+  try {
+    const graph = ui.editor?.graph
+    if (!graph) return
+    const model = graph.getModel()
+    const root = model.root
+
+    model.beginUpdate()
+    try {
+      for (let i = model.getChildCount(root) - 1; i >= 0; i--) {
+        const child = model.getChildAt(root, i)
+        if (child) model.remove(child)
+      }
+    } finally {
+      model.endUpdate()
+    }
+
+    // 保证 root 下有一个 layer（非 vertex 单元）作为默认父节点
+    if (model.getChildCount(root) === 0) {
+      const layer = new window.mxCell(null, new window.mxGeometry(), null)
+      model.add(root, layer, 0)
+    }
+
+    // 清空撤销栈：否则新项目里 Ctrl+Z 会把旧项目的图形"撤销"回来
+    ui.editor.undoManager?.clear()
+    ui.editor.setModified(false)
+    graph.zoomActual()
+  } catch (e) {
+    console.error('[DrawioEditor] Failed to reset canvas:', e)
+  }
+}
+
 // Global singleton holders — App.main can only run once per page (it has
 // an internal isMainCalled guard). When the user switches drawio projects,
 // React unmounts/remounts <DrawioEditor>; we need to reuse the existing
@@ -343,30 +382,37 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
       // 0) Set up MutationObserver BEFORE drawio loads to catch all body additions
       const hostDiv = containerHostRef.current
-      if (hostDiv) {
-        const drawioClasses = [
-          'geMenubarContainer',
-          'geToolbarContainer',
-          'geSidebarContainer',
-          'geFormatContainer',
-          'geDiagramContainer',
-          'geTabContainer',
-          'geHsplit',
-          'geSpriteBackground',
-          'geSidebarTooltip',
-        ]
-
-        const moveToHost = () => {
-          if (!hostDiv || cancelled.v) return
-          drawioClasses.forEach((cls) => {
-            document.querySelectorAll('.' + cls).forEach((el) => {
-              if (el.parentElement === document.body) {
-                hostDiv.appendChild(el)
-              }
-            })
+      const drawioClasses = [
+        'geMenubarContainer',
+        'geToolbarContainer',
+        'geSidebarContainer',
+        'geFormatContainer',
+        'geDiagramContainer',
+        'geTabContainer',
+        'geHsplit',
+        'geSpriteBackground',
+        'geSidebarTooltip',
+      ]
+      // moveToHost 需要在 fast path 也能被调用（跨 remount 主动迁移旧 DOM 节点），
+      // 所以提到外层；闭包捕获的 hostDiv / cancelled 在每次 effect 重新求值时
+      // 都是当前挂载的引用，安全。
+      const moveToHost = () => {
+        if (!hostDiv || cancelled.v) return
+        drawioClasses.forEach((cls) => {
+          document.querySelectorAll('.' + cls).forEach((el) => {
+            // 既要搬 body 上的子节点（首启），也要搬非当前 hostDiv 父级的
+            // 旧节点（fast path 跨 remount 复用 EditorUi 时，旧 DOM 仍挂在
+            // 上一次被卸载的 hostDiv 里，需要强制迁移到新的 hostDiv）
+            if (
+              el.parentElement === document.body ||
+              !hostDiv.contains(el)
+            ) {
+              hostDiv.appendChild(el)
+            }
           })
-        }
-
+        })
+      }
+      if (hostDiv) {
         // Observe immediately
         const observer = new MutationObserver(() => {
           if (!cancelled.v) {
@@ -422,10 +468,31 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         slot.changeHandler = (xml: string) => onChange?.(xml)
         const scale = slot.app.editor?.graph?.view?.scale
         if (typeof scale === 'number') setZoomPercent(Math.round(scale * 100))
+
+        // Fast path 跨项目 remount 复用 EditorUi：旧 DOM 仍挂在被卸载的 hostDiv
+        // 上，body 上观察不到 mutation，必须主动把 drawio 子节点搬到新 hostDiv
+        if (hostDiv) {
+          moveToHost()
+          // 兜底：drawio 异步重建 graph 时可能再次产生新节点，延迟再搬一次
+          setTimeout(moveToHost, 0)
+          setTimeout(moveToHost, 50)
+        }
+
+        // 新建项目（无历史版本）data 为空：必须重置画布，否则旧项目内容残留显示
+        if (!data) {
+          resetCanvas(slot.app)
+        }
+
         setIsReady(true)
         return () => {
           cancelled.v = true
           window.removeEventListener('keydown', swallowCtrlS, true)
+          // 清除未触发的防抖 change 定时器：否则切换项目后才触发的话，
+          // 旧项目的 XML 会经由新挂载的 changeHandler 写进新项目的 store
+          if (changeTimerRef.current != null) {
+            clearTimeout(changeTimerRef.current)
+            changeTimerRef.current = null
+          }
           // Do NOT remove scripts / <base> / <style>: they must survive
           // remounts so the next mount can reuse the EditorUi. Real cleanup
           // happens on full page reload.
@@ -672,13 +739,22 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           }
         }
 
-        // Try immediately, then retry a few times to handle async loading
+        // Try immediately, then retry a few times to handle async loading.
+        // setIsReady(true) 必须放在 initializeCanvas 成功之后：
+        // 否则 [data, isReady] effect 会先跑 setFileData 加载已有项目的图形，
+        // 而 100ms 后 tryInit 里的 initializeCanvas 会把所有 vertex（页面）
+        // 全部移除，把刚加载的内容清空，导致打开已有项目时画布空白（需刷新
+        // 才能恢复）。
         let attempts = 0
         const tryInit = () => {
           attempts++
           if (initializeCanvas()) {
             console.log('[DrawioEditor] Canvas initialized successfully')
-          } else if (attempts < 5) {
+            slot.changeHandler = (xml: string) => onChange?.(xml)
+            setIsReady(true)
+            return
+          }
+          if (attempts < 5) {
             setTimeout(tryInit, 200)
           }
         }
@@ -704,10 +780,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
         // Mirror the React-side darkMode preference onto the drawio body.
         document.body.classList.toggle('geDarkMode', !!_darkMode)
-
-        slot.changeHandler = (xml: string) => onChange?.(xml)
-
-        setIsReady(true)
       }
 
       // 5) Load mxgraph base first, then bootstrap.js. Both deferred so
@@ -733,6 +805,11 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       return () => {
         cancelled.v = true
         window.removeEventListener('keydown', swallowCtrlS, true)
+        // 清除未触发的防抖 change 定时器：切换项目时旧定时器触发会把旧 XML 写进新项目 store
+        if (changeTimerRef.current != null) {
+          clearTimeout(changeTimerRef.current)
+          changeTimerRef.current = null
+        }
         // Keep <base>, <style>, and <script>s alive across remounts.
         // On full page reload everything is GC'd naturally.
       }
@@ -766,7 +843,14 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
     // Apply `data` prop changes once drawio is ready.
     useEffect(() => {
       const ui = window.__wedrawDrawio?.app
-      if (!isReady || !ui || !data) return
+      if (!isReady || !ui) return
+
+      // 新项目（无历史版本）data 为空：EditorUi 是跨项目复用的单例，
+      // 必须显式重置画布，否则旧项目的内容会残留显示在新画板上
+      if (!data) {
+        resetCanvas(ui)
+        return
+      }
 
       if (pendingInternalDataRef.current === data) {
         pendingInternalDataRef.current = null
@@ -991,6 +1075,33 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       [getGraph],
     )
 
+    const insertText = useCallback(() => {
+      const graph = getGraph()
+      if (!graph) return
+      const parent = graph.getDefaultParent()
+      const pt =
+        typeof graph.getCenterInsertPoint === 'function'
+          ? graph.getCenterInsertPoint()
+          : { x: 60, y: 60 }
+      const model = graph.getModel()
+      let inserted: any = null
+      model.beginUpdate()
+      try {
+        inserted = graph.insertVertex(
+          parent, null, '文本',
+          pt.x - 40, pt.y - 20, 80, 40,
+          'text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;',
+        )
+      } finally {
+        model.endUpdate()
+      }
+      // 选中文本并直接进入编辑状态，用户可立即输入内容
+      if (inserted) {
+        graph.setSelectionCell(inserted)
+        graph.startEditing(inserted)
+      }
+    }, [getGraph])
+
     // ---------- Code panel handlers ----------
 
     const handleCopyCode = useCallback(async () => {
@@ -1089,7 +1200,16 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
                 <TooltipContent>连接线</TooltipContent>
               </Tooltip>
 
-              <div className="my-0.5 h-px w-4 bg-border" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={insertText} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
+                    <Type className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>文本</TooltipContent>
+              </Tooltip>
+
+              <div className="my-0.5 h-0.5 w-3 rounded bg-neutral-400 dark:bg-neutral-500" />
 
               <Tooltip>
                 <TooltipTrigger asChild>
