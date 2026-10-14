@@ -12,6 +12,8 @@ interface ChatState {
   initialPrompt: string | null
   // Initial attachments from Quick Start (Path A)
   initialAttachments: Attachment[] | null
+  // Initial thinking mode from Quick Start (Path A)
+  initialThinkingMode: boolean
   // Streaming state
   isStreaming: boolean
 
@@ -20,7 +22,7 @@ interface ChatState {
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
   updateMessage: (id: string, data: Partial<ChatMessage>) => void
   clearMessages: () => void
-  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null) => void
+  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null, thinkingMode?: boolean) => void
   clearInitialPrompt: () => void
   setStreaming: (streaming: boolean) => void
 }
@@ -42,15 +44,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   initialPrompt: null,
   initialAttachments: null,
+  initialThinkingMode: false,
   isStreaming: false,
 
   loadForProject: async (projectId) => {
     // 切换项目：先清空再加载该项目的持久化历史
+    // 注意：不要清 initialPrompt / initialAttachments / initialThinkingMode
+    // 它们是 HomePage QuickStart 的一次性信号，要留给 ChatPanel 消费后再清
     if (persistTimer) {
       clearTimeout(persistTimer)
       persistTimer = null
     }
-    set({ projectId, messages: [], initialPrompt: null, initialAttachments: null })
+    set({ projectId, messages: [] })
     try {
       const history = await ChatRepository.getByProjectId(projectId)
       // 仅在仍是同一项目时应用（避免快速切换竞态）
@@ -95,9 +100,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  setInitialPrompt: (prompt, attachments) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null }),
+  setInitialPrompt: (prompt, attachments, thinkingMode) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null, initialThinkingMode: thinkingMode ?? false }),
 
-  clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null }),
+  clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null, initialThinkingMode: false }),
 
   setStreaming: (streaming) => {
     set({ isStreaming: streaming })

@@ -132,5 +132,10 @@ export function extractCode(response: string, _engineType: EngineType): string {
     }
   }
 
+  // Strip any XML declaration the AI may have emitted (it conflicts with
+  // the declaration we add in wrapToMxfile and would cause "Extra content
+  // at the end of the document" errors after wrapping).
+  code = code.replace(/^\s*<\?xml[^?]*\?>\s*/i, '')
+
   return code
 }

@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 /**
  * Parse SSE data line and extract content or event type
  */
-function parseSSELine(line: string): { type: 'content' | 'thinking' | 'done' | 'skip'; content?: string; inThinking?: boolean } {
+function parseSSELine(line: string): { type: 'content' | 'thinking' | 'done' | 'skip'; content?: string; inThinking?: boolean; isReasoning?: boolean } {
   let data = line
 
   // Handle SSE format (data: prefix)
@@ -26,9 +26,11 @@ function parseSSELine(line: string): { type: 'content' | 'thinking' | 'done' | '
     if (parsed.choices?.[0]?.delta?.content) {
       return { type: 'content', content: parsed.choices[0].delta.content }
     }
-    // Handle simple format
-    if (parsed.content) {
-      return { type: 'content', content: parsed.content }
+    // Handle Kimi format: reasoning_content is the internal thinking text,
+    // content is the final answer. Emit both as content, tagged with isReasoning
+    // so the UI can choose how to display it.
+    if (parsed.content !== undefined) {
+      return { type: 'content', content: parsed.content, isReasoning: parsed.isReasoning }
     }
     // Handle text field
     if (parsed.text) {
@@ -71,10 +73,11 @@ export const aiService = {
   /**
    * Stream chat response with SSE support
    * @param messages - The messages to send
-   * @param onChunk - Callback for each content chunk
+   * @param onChunk - Callback for each actual answer chunk
    * @param thinking - 'enabled' | 'disabled'，控制模型思考开关（默认 disabled）
    * @param onComplete - Optional callback when streaming completes
-   * @param onThinking - Optional callback when thinking content is detected
+   * @param onThinking - Optional callback when thinking state changes
+   * @param onReasoningChunk - Optional callback for each reasoning/thinking chunk (Kimi)
    * @returns The full accumulated content
    */
   async streamChat(
@@ -82,7 +85,8 @@ export const aiService = {
     onChunk: (chunk: string, accumulated: string) => void,
     thinking: 'enabled' | 'disabled' = 'disabled',
     onComplete?: (content: string) => void,
-    onThinking?: (isThinking: boolean) => void
+    onThinking?: (isThinking: boolean) => void,
+    onReasoningChunk?: (chunk: string, accumulated: string) => void,
   ): Promise<string> {
     const request: ChatRequest = { messages, stream: true, thinking } as ChatRequest & { stream: boolean }
 
@@ -104,6 +108,7 @@ export const aiService = {
 
     const decoder = new TextDecoder()
     let fullContent = ''
+    let reasoningContent = ''
     let buffer = ''
 
     try {
@@ -125,8 +130,14 @@ export const aiService = {
           if (result.type === 'thinking') {
             onThinking?.(result.inThinking ?? false)
           } else if (result.type === 'content' && result.content) {
-            fullContent += result.content
-            onChunk(result.content, fullContent)
+            if (result.isReasoning) {
+              // Kimi reasoning_content — feed to dedicated callback, NOT to onChunk
+              reasoningContent += result.content
+              onReasoningChunk?.(result.content, reasoningContent)
+            } else {
+              fullContent += result.content
+              onChunk(result.content, fullContent)
+            }
           }
         }
       }
@@ -137,8 +148,13 @@ export const aiService = {
         if (result.type === 'thinking') {
           onThinking?.(result.inThinking ?? false)
         } else if (result.type === 'content' && result.content) {
-          fullContent += result.content
-          onChunk(result.content, fullContent)
+          if (result.isReasoning) {
+            reasoningContent += result.content
+            onReasoningChunk?.(result.content, reasoningContent)
+          } else {
+            fullContent += result.content
+            onChunk(result.content, fullContent)
+          }
         }
       }
     } finally {

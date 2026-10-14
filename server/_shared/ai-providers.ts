@@ -92,6 +92,46 @@ export async function callOpenAI(messages: Message[], env: Env): Promise<string>
   return data.choices[0]?.message?.content || ''
 }
 
+export async function callKimi(messages: Message[], env: Env): Promise<string> {
+  const endpoint = resolveEndpoint(env.AI_BASE_URL, '/chat/completions')
+  const apiKey = env.AI_API_KEY
+
+  if (!apiKey) {
+    throw new Error('AI_API_KEY not configured')
+  }
+
+  const extraBody: Record<string, unknown> = {}
+  if ((env.AI_THINKING || '').toLowerCase() === 'enabled') {
+    extraBody['reasoning_effort'] = 'high'
+  }
+
+  const body: Record<string, unknown> = {
+    model: env.AI_MODEL_ID,
+    messages: messages,
+    max_tokens: 64000,
+  }
+  if (Object.keys(extraBody).length > 0) {
+    body['extra_body'] = extraBody
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Kimi API error: ${error}`)
+  }
+
+  const data = (await response.json()) as OpenAIResponse
+  return data.choices[0]?.message?.content || ''
+}
+
 export async function callAnthropic(messages: Message[], env: Env): Promise<string> {
   const endpoint = resolveEndpoint(env.AI_BASE_URL, '/messages')
   const apiKey = env.AI_API_KEY

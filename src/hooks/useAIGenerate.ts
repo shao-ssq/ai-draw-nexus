@@ -142,10 +142,58 @@ export function useAIGenerate() {
   // 流式实时渲染节流：excalidraw 边生成边画，限频避免频繁 updateScene 卡顿
   const lastStreamRenderRef = useRef(0)
 
+  // reasoning 渐进显示：每帧推进若干字符，模拟"字一个字"出来
+  const reasoningRafRef = useRef<number | null>(null)
+  const reasoningDisplayRef = useRef('')
+  const reasoningTargetRef = useRef('')
+  const reasoningMsgIdRef = useRef<string | null>(null)
+  const reasoningFirstRef = useRef(true)
+
+  // main content 渐进显示：聊天面板的代码也按 rAF 推进，避免一段一段弹出。
+  // 注意：editorStore.currentContent（excalidraw 用 partial 增量 updateScene）不受此影响，
+  // 仍走真实累积内容，保证 extractPartialExcalidrawArray 能正确提取完整元素。
+  const contentRafRef = useRef<number | null>(null)
+  const contentDisplayRef = useRef('')
+  const contentTargetRef = useRef('')
+  const contentMsgIdRef = useRef<string | null>(null)
+  const contentFirstRef = useRef(true)
+
+  // main content 渐进 tick：每帧推进 ~1/10 剩余字符
+  const tickContent = useCallback(() => {
+    contentRafRef.current = null
+    const target = contentTargetRef.current
+    const displayed = contentDisplayRef.current
+    if (target === displayed) return
+    const remaining = target.length - displayed.length
+    const step = Math.min(remaining, Math.max(1, Math.ceil(remaining / 10)))
+    contentDisplayRef.current = target.slice(0, displayed.length + step)
+    if (contentMsgIdRef.current) {
+      updateMessage(contentMsgIdRef.current, {
+        content: contentDisplayRef.current,
+      })
+    }
+    if (contentDisplayRef.current !== target) {
+      contentRafRef.current = requestAnimationFrame(tickContent)
+    }
+  }, [updateMessage])
+
+  // 写入新 chunk：首段直显避免空白卡顿，后续段 rAF 渐进
+  const handleContentChunk = useCallback((assistantMsgId: string, accumulated: string) => {
+    contentMsgIdRef.current = assistantMsgId
+    contentTargetRef.current = accumulated
+    if (contentFirstRef.current) {
+      contentFirstRef.current = false
+      contentDisplayRef.current = accumulated
+      updateMessage(assistantMsgId, { content: accumulated })
+      return
+    }
+    if (contentRafRef.current === null) {
+      contentRafRef.current = requestAnimationFrame(tickContent)
+    }
+  }, [tickContent, updateMessage])
+
   /**
-   * 流式累积回调：更新聊天消息内容，并对 excalidraw 增量渲染画布。
-   * excalidraw 输出为 JSON 数组，每元素独占一行；此处提取已完整的元素，
-   * 节流（≥250ms）写入 currentContent，让画布边生成边显示。
+   * 流式累积回调：聊天面板走 typewriter（rAF 渐进），excalidraw 画布仍用真实 partial 增量。
    */
   const handleStreamAccumulated = useCallback((
     assistantMsgId: string,
@@ -153,7 +201,9 @@ export function useAIGenerate() {
     accumulated: string,
     onThinking?: (isThinking: boolean) => void
   ) => {
-    updateMessage(assistantMsgId, { content: accumulated })
+    // 聊天面板用渐进显示（看起来丝滑）
+    handleContentChunk(assistantMsgId, accumulated)
+    // excalidraw 画布用真实 partial（extractPartialExcalidrawArray 提取完整元素）
     if (engineType !== 'excalidraw') return
     const now = Date.now()
     if (now - lastStreamRenderRef.current < 250) return
@@ -166,7 +216,43 @@ export function useAIGenerate() {
     } catch {
       // 仍有不完整片段，跳过本次
     }
-  }, [updateMessage, setContent])
+  }, [handleContentChunk, setContent])
+
+  // reasoning 内容渐进显示：每帧推进 ~1/10 剩余字符，模拟打字效果
+  const tickReasoning = useCallback(() => {
+    reasoningRafRef.current = null
+    const target = reasoningTargetRef.current
+    const displayed = reasoningDisplayRef.current
+    if (target === displayed) return
+    const remaining = target.length - displayed.length
+    // 步长：每帧推进剩余的 1/10（最少 1 字符），保证不同长度段落耗时近似
+    const step = Math.min(remaining, Math.max(1, Math.ceil(remaining / 10)))
+    reasoningDisplayRef.current = target.slice(0, displayed.length + step)
+    if (reasoningMsgIdRef.current) {
+      updateMessage(reasoningMsgIdRef.current, {
+        reasoningContent: reasoningDisplayRef.current,
+      })
+    }
+    if (reasoningDisplayRef.current !== target) {
+      reasoningRafRef.current = requestAnimationFrame(tickReasoning)
+    }
+  }, [updateMessage])
+
+  // reasoning 收到 chunk：写入 target；首段直接显示，后续段通过 tickReasoning 渐进推进
+  const handleReasoningChunk = useCallback((assistantMsgId: string, accumulated: string) => {
+    reasoningMsgIdRef.current = assistantMsgId
+    reasoningTargetRef.current = accumulated
+    if (reasoningFirstRef.current) {
+      // 第一段直接显示，避免空白卡顿
+      reasoningFirstRef.current = false
+      reasoningDisplayRef.current = accumulated
+      updateMessage(assistantMsgId, { reasoningContent: accumulated })
+      return
+    }
+    if (reasoningRafRef.current === null) {
+      reasoningRafRef.current = requestAnimationFrame(tickReasoning)
+    }
+  }, [tickReasoning, updateMessage])
 
   /**
    * Generate diagram using AI with streaming support
@@ -221,6 +307,22 @@ export function useAIGenerate() {
     setLoading(true)
     // 重置流式渲染节流计时，每次生成独立计时
     lastStreamRenderRef.current = 0
+    // 重置 reasoning 渐进显示状态（每次新消息独立计时）
+    reasoningFirstRef.current = true
+    reasoningDisplayRef.current = ''
+    reasoningTargetRef.current = ''
+    if (reasoningRafRef.current !== null) {
+      cancelAnimationFrame(reasoningRafRef.current)
+      reasoningRafRef.current = null
+    }
+    // 重置 main content 渐进显示状态（每次新消息独立计时）
+    contentFirstRef.current = true
+    contentDisplayRef.current = ''
+    contentTargetRef.current = ''
+    if (contentRafRef.current !== null) {
+      cancelAnimationFrame(contentRafRef.current)
+      contentRafRef.current = null
+    }
 
     try {
       let finalCode: string
@@ -297,13 +399,20 @@ export function useAIGenerate() {
       // Update content (AI generation auto-saves, so mark as saved)
       setContentFromVersion(finalCode)
 
-      // Update assistant message: 保留已流式输出的代码内容，仅切换状态
-      const streamedContent = useChatStore
-        .getState()
-        .messages.find((m) => m.id === assistantMsgId)?.content
+      // 流式结束：取消 main content 的 rAF 渐进，强制把 finalCode 写进聊天面板。
+      // 不用 store 里的 streamedContent——那个是 typewriter 渐进到一半的中间值，
+      // 可能比 finalCode 短；用 finalCode 保证和画布完全一致。
+      if (contentRafRef.current !== null) {
+        cancelAnimationFrame(contentRafRef.current)
+        contentRafRef.current = null
+      }
+      contentDisplayRef.current = finalCode
+      contentTargetRef.current = finalCode
+
+      // Update assistant message: 写入最终代码（与画布一致），切换状态
       updateMessage(assistantMsgId, {
-        content: streamedContent && streamedContent.trim()
-          ? streamedContent
+        content: finalCode && finalCode.trim()
+          ? finalCode
           : '图表已生成，可在右侧画布查看或导出。',
         status: 'complete',
         phaseLabel: '绘制完成',
@@ -495,6 +604,11 @@ export function useAIGenerate() {
           updateMessage(assistantMsgId, {
             phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
           })
+        },
+        (_chunk: string, reasoningAccumulated: string) => {
+          // 思考内容独立累积，不影响主 content（后者是最终答案）
+          // 走 typewriter 渐进显示，避免大段弹出
+          handleReasoningChunk(assistantMsgId, reasoningAccumulated)
         }
       )
       return extractCode(response, engineType)
@@ -542,6 +656,9 @@ export function useAIGenerate() {
           updateMessage(assistantMsgId, {
             phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
           })
+        },
+        (_chunk: string, reasoningAccumulated: string) => {
+          handleReasoningChunk(assistantMsgId, reasoningAccumulated)
         }
       )
       return extractCode(response, engineType)

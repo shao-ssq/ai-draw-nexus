@@ -44,6 +44,8 @@ export interface ChatMessage {
   stepInfo?: { current: number; total: number }
   /** 生成该消息所用的引擎类型，用于显示模型标签 */
   engineType?: EngineType
+  /** Kimi 思考内容（reasoning_content），流式过程中实时更新 */
+  reasoningContent?: string
 }
 
 // Payload Message (Message Payload Store - OpenAI compatible)

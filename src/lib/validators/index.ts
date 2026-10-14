@@ -85,7 +85,19 @@ export function validateExcalidraw(json: string): ValidationResult {
 export function validateDrawio(xml: string): ValidationResult {
   try {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(xml, 'text/xml')
+
+    // The AI sometimes emits an XML prolog (<?xml...?>) before the mxCell
+    // fragments. DOMParser treats the prolog as part of the document prolog;
+    // if the prolog is followed by something that is not the opening of the
+    // mxfile root element, wrapToMxfile() will wrap the prolog+fragments
+    // together, producing two top-level elements (prolog + <mxfile>) — an
+    // invalid XML document whose error message is "Extra content at the end
+    // of the document".
+    //
+    // Strip any leading prolog/declaration so the rest is treated as the
+    // fragment to be validated and (if needed) wrapped.
+    const stripped = xml.replace(/^\s*<\?xml[^?]*\?>\s*/i, '')
+    const doc = parser.parseFromString(stripped, 'text/xml')
 
     // Check for parsing errors
     const parseError = doc.querySelector('parsererror')

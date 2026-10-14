@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronRight, ChevronDown, Copy, Check, RotateCw } from 'lucide-react'
 
 /**
@@ -145,29 +145,20 @@ function TextBlock({ content }: { content: string }) {
   return <div className="md-text" dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-/** 超过该行数的 mermaid / excalidraw 代码块默认折叠 */
-const COLLAPSE_THRESHOLD = 40
-
+/** 代码块：默认展开，用户可手动折叠/展开（不再自动折叠） */
 function CodeBlock({
   lang,
   content,
-  autoCollapse,
   showRegenerate,
   onRegenerate,
 }: {
   lang?: string
   content: string
-  autoCollapse?: boolean
   showRegenerate?: boolean
   onRegenerate?: () => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const [copied, setCopied] = useState(false)
-
-  // 流式结束后，若 autoCollapse 为真则折叠（用户手动展开后不再自动收起）
-  useEffect(() => {
-    if (autoCollapse) setCollapsed(true)
-  }, [autoCollapse])
 
   const handleCopy = async () => {
     try {
@@ -263,13 +254,6 @@ export function MarkdownRenderer({
             key={idx}
             lang={b.lang}
             content={b.content}
-            autoCollapse={
-              // mermaid / excalidraw 代码超过阈值行数时折叠
-              // 流式生成中不折叠，避免打断观看；生成完成后再折叠
-              !isStreaming &&
-              (engineType === 'mermaid' || engineType === 'excalidraw') &&
-              b.content.split('\n').length > COLLAPSE_THRESHOLD
-            }
             showRegenerate={showRegenerate && idx === lastCodeIdx}
             onRegenerate={onRegenerate}
           />

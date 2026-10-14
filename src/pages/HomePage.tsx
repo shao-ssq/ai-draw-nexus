@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Send } from 'lucide-react'
+import { FileText, Send, Brain } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
@@ -16,6 +16,7 @@ export function HomePage() {
   const [selectedEngine, setSelectedEngine] = useState<EngineType>('mermaid')
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
+  const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setInitialPrompt = useChatStore((state) => state.setInitialPrompt)
@@ -53,7 +54,7 @@ export function HomePage() {
 
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
-      setInitialPrompt(prompt.trim(), allAttachments)
+      setInitialPrompt(prompt.trim(), allAttachments, thinkingEnabled)
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -241,6 +242,20 @@ export function HomePage() {
                     title="可上传文档一键转化为图表，或上传截图复刻图表"
                   >
                     <FileText className="h-4 w-4" />
+                  </button>
+
+                  {/* 思考模式开关 */}
+                  <button
+                    onClick={() => setThinkingEnabled((v) => !v)}
+                    title="开启深度思考，生成更详细的图表规划（仅支持 Kimi 等支持推理的模型）"
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium transition-colors ${
+                      thinkingEnabled
+                        ? 'border-[#a78bfa] bg-[#ede9fe] text-[#6d28d9]'
+                        : 'border-border bg-[#f3f4f6] text-[#374151] hover:bg-[#e5e7eb]'
+                    }`}
+                  >
+                    <Brain className="h-3.5 w-3.5" />
+                    <span>思考</span>
                   </button>
 
                   {/* 发送按钮 */}

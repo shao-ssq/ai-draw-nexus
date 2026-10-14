@@ -259,6 +259,22 @@ const CHROME_HIDING_CSS = `
     border: none !important;
     padding: 0 !important;
   }
+
+  /* ====== 修复双击画布弹出的快捷形状选择器（.geShapePicker）行末图标右侧被裁切 ======
+     grapheditor.css 给 .geShapePicker 固定 width:142px，外层图标项 .geShapePicker>*
+     是 width:30px + padding:1px，但 box-sizing 默认 content-box —— 实际渲染 32px
+     而非 30px。4 个一行 4×32=128 + inline-block 空白间隙约 12px = 140px，恰好
+     等于容器内宽（142-2 边框），零余量；亚像素/字体相关的小数会让行末图标
+     右边顶到/略超容器右边框，被边框+阴影裁切，看起来"每个右边隐藏了一点"。
+     内层 .geItem 的 padding:2px 与 >* 的 padding:1px 不一致也加剧了问题。
+     改用 border-box 让 30px 含 padding（4×30=120 < 内宽，留 8px 余量），
+     统一 padding 为 1px，容器略加宽到 148px 兜底字体相关的空白间隙波动。 */
+  #drawio-host .geShapePicker { width: 148px !important; }
+  #drawio-host .geShapePicker > * { box-sizing: border-box !important; }
+  #drawio-host .geShapePicker .geItem {
+    box-sizing: border-box !important;
+    padding: 1px !important;
+  }
 `
 
 function downloadBlob(href: string, filename: string) {

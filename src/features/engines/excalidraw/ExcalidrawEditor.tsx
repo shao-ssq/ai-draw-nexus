@@ -278,22 +278,20 @@ export const ExcalidrawEditor = forwardRef<ExcalidrawEditorRef, ExcalidrawEditor
       // Prepare elements with proper binding handling
       const restoredElements = prepareExcalidrawElements(elementsData)
 
-      // Skip if elements are the same (prevent unnecessary updates)
-      const currentElements = excalidrawAPI.getSceneElements()
-      const currentVersion = getSceneVersion(currentElements)
-      const newVersion = getSceneVersion(restoredElements)
-
-      if (currentVersion !== newVersion) {
-        skipProgrammaticChangeRef.current = true
-        lastEmittedDataRef.current = data
-        excalidrawAPI.updateScene({
-          elements: restoredElements,
-          appState: { isLoading: false, zoom: { value: DEFAULT_ZOOM_VALUE } },
-        })
-        // AI 生成（含流式）更新后居中：防抖，仅在更新停顿后触发一次，
-        // 最终生成内容会被居中显示，流式过程不会反复跳动。
-        centerOnContent(false)
-      }
+      // 注意：不能用 getSceneVersion 比较来跳过更新。
+      // 原因：`convertToExcalidrawElements` 对未知 type/缺字段的元素会走 default 分支直接
+      // 返回原 element，不补 `version` 字段；此时 newVersion = 0，等于空场景的 currentVersion，
+      // AI 生成的元素永远不会被 updateScene 写入画布 → 空白。
+      // 用 data 字符串 + onChange 回流识别已经够（handleChange 里会写 lastEmittedDataRef），
+      // 没必要再叠一层不可靠的 version 检查。
+      skipProgrammaticChangeRef.current = true
+      excalidrawAPI.updateScene({
+        elements: restoredElements,
+        appState: { isLoading: false, zoom: { value: DEFAULT_ZOOM_VALUE } },
+      })
+      // AI 生成（含流式）更新后居中：防抖，仅在更新停顿后触发一次，
+      // 最终生成内容会被居中显示，流式过程不会反复跳动。
+      centerOnContent(false)
     } catch {
       // Invalid JSON, ignore
     }

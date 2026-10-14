@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import type { Env, ChatRequest } from '../_shared/types.js'
 import { corsHeaders } from '../_shared/cors.js'
-import { callOpenAI, callAnthropic } from '../_shared/ai-providers.js'
+import { callOpenAI, callAnthropic, callKimi } from '../_shared/ai-providers.js'
 import { streamOpenAI } from '../_shared/stream-openai.js'
 import { streamAnthropic } from '../_shared/stream-anthropic.js'
+import { streamKimi } from '../_shared/stream-kimi.js'
 
 const app = new Hono()
 
@@ -40,6 +41,8 @@ app.post('/chat', async (c) => {
       switch (provider) {
         case 'anthropic':
           return streamAnthropic(messages, effectiveEnv)
+        case 'kimi':
+          return streamKimi(messages, effectiveEnv)
         case 'openai':
         default:
           return streamOpenAI(messages, effectiveEnv)
@@ -50,6 +53,9 @@ app.post('/chat', async (c) => {
       switch (provider) {
         case 'anthropic':
           response = await callAnthropic(messages, effectiveEnv)
+          break
+        case 'kimi':
+          response = await callKimi(messages, effectiveEnv)
           break
         case 'openai':
         default:

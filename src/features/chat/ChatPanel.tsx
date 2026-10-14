@@ -71,13 +71,58 @@ function ProcessChip({ msg }: { msg: ChatMessage }) {
 function AssistantMessageCard({
   msg,
   onRegenerate,
+  modelInfo,
 }: {
   msg: ChatMessage
   onRegenerate: () => void
+  modelInfo?: { provider: string; modelId: string } | null
 }) {
+  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const reasoningScrollRef = useRef<HTMLDivElement>(null)
+  // 用户主动上滚时，停止自动跟随；用 ref 避免触发额外重渲染
+  const isUserScrolledUpRef = useRef(false)
+  // 记录上一次的 isThinking：仅在 true→false 的瞬间清空展开偏好
+  const prevIsThinkingRef = useRef(false)
   const isStreaming = msg.status === 'streaming' || msg.status === 'pending'
+  // "是否正在思考"只看 phaseLabel（Kimi 的 onThinking(true/false) 精确控制），
+  // 不再用 reasoningContent 兜底——否则 reasoningContent 一直有值，isThinking 会在整个流式期间都为 true，
+  // 导致"思考结束 → 开始吐内容"这个真正的折叠时机被错过，要等整次生成完成才折叠。
+  const isThinking = msg.phaseLabel === '思考中...'
   const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI Agent'
   const showRegenerate = !isStreaming && !!msg.content && msg.status !== 'error'
+  const modelName = modelInfo?.modelId ? ` · ${modelInfo.modelId}` : ''
+
+  // 思考时强制展开；思考一结束立即折叠（清掉用户在思考中点击 header 留下的"展开"状态）
+  const reasoningOpen = msg.reasoningContent
+    ? (isThinking || reasoningExpanded)
+    : false
+
+  // 思考结束的瞬间：清空展开偏好，确保 box 自动折叠（不被之前的点击残留）
+  useEffect(() => {
+    if (prevIsThinkingRef.current && !isThinking) {
+      setReasoningExpanded(false)
+    }
+    prevIsThinkingRef.current = isThinking
+  }, [isThinking])
+
+  // 思考内容流式追加时自动滚底，但用户已上滚则停止跟随
+  useEffect(() => {
+    if (!reasoningOpen) return
+    if (!isStreaming) return
+    if (isUserScrolledUpRef.current) return
+    const el = reasoningScrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [msg.reasoningContent, reasoningOpen, isStreaming])
+
+  // 用户在思考框内手动滚动时，判断是否已离开底部
+  const handleReasoningScroll = () => {
+    const el = reasoningScrollRef.current
+    if (!el) return
+    // 距离底部 > 8px 视为"已上滚"，停止自动跟随；滚回底部则恢复跟随
+    const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
+    isUserScrolledUpRef.current = distanceFromBottom > 8
+  }
 
   return (
     <div className="ai-message-card">
@@ -86,9 +131,37 @@ function AssistantMessageCard({
         <span className="ai-avatar">
           <Sparkles className="h-4 w-4" />
         </span>
-        <span className="ai-model-tag">{modelTag}</span>
+        <span className="ai-model-tag">{modelTag}{modelName}</span>
         <ProcessChip msg={msg} />
       </div>
+
+      {/* 思考过程框：流式中强制展开，结束后折叠 */}
+      {msg.reasoningContent && (
+        <div className="ai-reasoning-box">
+          <button
+            className="ai-reasoning-header"
+            onClick={() => setReasoningExpanded((v) => !v)}
+            type="button"
+          >
+            <Brain className="h-3 w-3 flex-shrink-0" />
+            <span className="text-xs font-medium">思考过程</span>
+            <span className="ai-reasoning-toggle">
+              {reasoningOpen ? '▲' : '▼'}
+            </span>
+          </button>
+          {reasoningOpen && (
+            <div
+              className="ai-reasoning-content"
+              ref={reasoningScrollRef}
+              onScroll={handleReasoningScroll}
+            >
+              <pre className="whitespace-pre-wrap break-all text-xs text-muted-foreground leading-relaxed">
+                {msg.reasoningContent}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 正文内容区 */}
       <div className="ai-msg-body">
@@ -117,22 +190,43 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [modelInfo, setModelInfo] = useState<{ provider: string; modelId: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevMsgCountRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
 
-  const { messages, isStreaming, initialPrompt, initialAttachments, clearInitialPrompt, clearMessages } = useChatStore()
+  const { messages, isStreaming, initialPrompt, initialAttachments, initialThinkingMode, clearInitialPrompt, clearMessages } = useChatStore()
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const engineType = useEditorStore(selectEngineType)
   const { generate } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
 
-  // 思考开关默认值按引擎区分：Mermaid 默认开启（布局规划精细），Excalidraw/DrawIO 默认关闭（速度快）。
-  // 切换引擎/项目时重置为该引擎的默认值（仅在用户未手动切换过的时段；流式中不重置）。
+  // 加载当前模型信息
   useEffect(() => {
-    setThinkingEnabled(engineType === 'mermaid')
-  }, [engineType])
+    fetch('/api/model-info')
+      .then((r) => r.json())
+      .then((data) => setModelInfo(data))
+      .catch(() => {})
+  }, [])
+
+  // 思考开关默认值：仅在 ChatPanel 首次挂载时设置一次（按引擎区分 + 首页 preference），
+  // 之后由用户手动切换，useEffect 不再被依赖变化触发覆盖。
+  // 修 bug：旧逻辑 deps 是 [engineType, initialThinkingMode]，engineType 一变就重跑，
+  // 把用户手动关掉的"非思考"又设回"思考"（mermaid 永远强制开）。
+  const hasInitializedThinkingRef = useRef(false)
+  useEffect(() => {
+    if (hasInitializedThinkingRef.current) return
+    hasInitializedThinkingRef.current = true
+    // 首页 preference 优先；否则 Mermaid 默认开，其他默认关
+    if (initialThinkingMode) {
+      setThinkingEnabled(true)
+    } else if (engineType === 'mermaid') {
+      setThinkingEnabled(true)
+    } else {
+      setThinkingEnabled(false)
+    }
+  }, [engineType, initialThinkingMode])
 
   const handleCopy = async (text: string, id: string) => {
     try {
@@ -236,6 +330,9 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="WeDraw" className="h-8 w-8 rounded-lg object-contain" />
           <h2 className="font-medium text-primary">助手</h2>
+          {modelInfo?.modelId && (
+            <span className="text-xs text-muted font-normal">{modelInfo.modelId}</span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -278,6 +375,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 <AssistantMessageCard
                   msg={msg}
                   onRegenerate={handleRegenerate}
+                  modelInfo={modelInfo}
                 />
               ) : (
                 <>
