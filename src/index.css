@@ -263,7 +263,8 @@ body {
   border-bottom: none;
 }
 .markdown-body .md-code-content::-webkit-scrollbar {
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 .markdown-body .md-code-content::-webkit-scrollbar-thumb {
   background: rgba(100, 116, 139, 0.3);

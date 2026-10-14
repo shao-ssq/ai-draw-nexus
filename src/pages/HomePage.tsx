@@ -255,7 +255,7 @@ export function HomePage() {
                     }`}
                   >
                     <Brain className="h-3.5 w-3.5" />
-                    <span>思考</span>
+                    <span>深度思考</span>
                   </button>
 
                   {/* 发送按钮 */}

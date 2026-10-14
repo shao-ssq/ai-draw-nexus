@@ -253,10 +253,13 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (initialPrompt && !hasHandledInitialPrompt.current) {
       hasHandledInitialPrompt.current = true
       const attachmentsToSend = initialAttachments ?? undefined
+      // 从首页进来时，思考模式直接用首页按钮状态（initialThinkingMode），
+      // 不依赖 ChatPanel 的 thinkingEnabled state（闭包内可能还未初始化为正确值）
+      const initialMode: 'enabled' | 'disabled' = initialThinkingMode ? 'enabled' : 'disabled'
       clearInitialPrompt()
-      handleSend(initialPrompt, attachmentsToSend)
+      handleSend(initialPrompt, attachmentsToSend, initialMode)
     }
-  }, [initialPrompt, initialAttachments])
+  }, [initialPrompt, initialAttachments, initialThinkingMode])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -298,14 +301,21 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleSend = async (text?: string, initialAtts?: Attachment[]) => {
+  const handleSend = async (
+    text?: string,
+    initialAtts?: Attachment[],
+    // 从首页 QuickStart 进入时直接传思考模式，避免依赖闭包里未初始化的 thinkingEnabled
+    forceThinkingMode?: 'enabled' | 'disabled',
+  ) => {
     const message = text || inputValue.trim()
     if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
 
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
-    await generate(message, isCanvasEmpty, currentAttachments, thinkingEnabled ? 'enabled' : 'disabled')
+    const effectiveThinking: 'enabled' | 'disabled' =
+      forceThinkingMode ?? (thinkingEnabled ? 'enabled' : 'disabled')
+    await generate(message, isCanvasEmpty, currentAttachments, effectiveThinking)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
