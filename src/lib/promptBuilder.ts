@@ -24,27 +24,52 @@ export function buildInitialPrompt(
   elementsOutput?: string,
   engineType?: EngineType
 ): string {
-  // Single-phase generation (mermaid / excalidraw / drawio)
-  if (!useTwoPhase) {
-    // 引擎对应的输出产物描述
-    const outputDesc =
-      engineType === 'excalidraw'
-        ? '完整的 Excalidraw JSON 数组'
-        : engineType === 'drawio'
-          ? '完整的 draw.io XML'
-          : engineType === 'mermaid'
-            ? '完整的 Mermaid 代码'
-            : '完整的图表代码'
+  // Single-phase generation (mermaid)
+  if (!useTwoPhase && engineType === 'mermaid') {
     return `用户需求：
 """
 ${userInput}
 """
 
-一次性生成${outputDesc}。
-在写最终代码前，先在内部推断图表类型、阅读顺序、完整元素清单、分组、关系、箭头、标签、层级、间距、对齐和视觉重点。
+根据以上需求，生成完整的图表代码。`
+  }
+
+  // Single-phase generation (excalidraw)
+  if (!useTwoPhase && engineType === 'excalidraw') {
+    return `用户需求：
+"""
+${userInput}
+"""
+
+一次性生成完整的 Excalidraw JSON 数组。
+在写最终 JSON 前，先在内部推断图表类型、阅读顺序、完整元素清单、分组、关系、箭头、标签、层级、间距、对齐和视觉重点。
 用这份内部规划直接产出连贯的手绘白板结果；不要把规划过程输出出来。
 图表中文字语言：中文。所有图表可见文本必须与用户当前网页界面语言保持一致。
-仅输出最终代码。不要输出 ASCII Layout、Blueprint、规划说明、markdown 代码块、解释或多个候选方案。`
+仅输出最终 Excalidraw JSON 数组。不要输出 ASCII Layout、Blueprint、规划说明、markdown 代码块、解释或多个候选方案。`
+  }
+
+  // Single-phase generation (drawio)
+  if (!useTwoPhase && engineType === 'drawio') {
+    return `用户需求：
+"""
+${userInput}
+"""
+
+一次性生成完整的可见 mxCell 片段。
+在写最终 XML 前，先在内部推断图表类型、阅读顺序、完整节点/容器清单、分组、关系、连线标签、路由意图、层级、间距、对齐和颜色/强调策略。
+用这份内部规划直接产出完整、留白清晰的 Draw.io 结果；不要把规划过程输出出来。
+图表中文字语言：中文。所有图表可见文本必须与用户当前网页界面语言保持一致。
+仅输出最终图中的可见 mxCell 元素。不要输出 ASCII Layout、Blueprint、规划说明、mxfile、diagram、mxGraphModel、root，也不要输出 id 为 0 和 1 的基础 mxCell。`
+  }
+
+  // Single-phase generation (fallback)
+  if (!useTwoPhase) {
+    return `用户需求：
+"""
+${userInput}
+"""
+
+根据以上需求，生成完整的图表代码。`
   }
 
   // Two-phase generation (for drawio/excalidraw)
