@@ -81,6 +81,7 @@ export const aiService = {
    * @param onComplete - Optional callback when streaming completes
    * @param onThinking - Optional callback when thinking state changes
    * @param onReasoningChunk - Optional callback for each reasoning/thinking chunk (Kimi/Gemini)
+   * @param signal - Optional AbortSignal to cancel the stream (e.g. on project switch)
    * @returns The full accumulated content
    */
   async streamChat(
@@ -91,6 +92,7 @@ export const aiService = {
     onComplete?: (content: string) => void,
     onThinking?: (isThinking: boolean) => void,
     onReasoningChunk?: (chunk: string, accumulated: string) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     const request: ChatRequest = {
       engine,
@@ -103,6 +105,7 @@ export const aiService = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
+      signal,
     })
 
     if (!response.ok) {
@@ -122,6 +125,11 @@ export const aiService = {
 
     try {
       while (true) {
+        // AbortSignal 检查：reader.read() 在 abort 后会 reject，
+        // 这里再加一个保险，遇到 abort 立刻抛 AbortError
+        if (signal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
         const { done, value } = await reader.read()
         if (done) break
 
@@ -167,7 +175,7 @@ export const aiService = {
         }
       }
     } finally {
-      reader.releaseLock()
+      try { reader.releaseLock() } catch { /* noop */ }
     }
 
     onThinking?.(false)

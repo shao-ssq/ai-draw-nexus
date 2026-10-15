@@ -5,82 +5,132 @@ import type { Project, EngineType } from '@/types'
 type ThumbnailGetter = () => Promise<string>
 
 interface EditorState {
-  // Current project
-  currentProject: Project | null
-  // Current canvas content (source code / JSON / XML)
-  currentContent: string
-  // Loading state
-  isLoading: boolean
-  // Error state
+  // 唯一全局字段
+  currentProjectId: string | null
   error: string | null
-  // Unsaved changes flag
-  hasUnsavedChanges: boolean
-  // Last saved content (to compare with current)
-  lastSavedContent: string
-  // Counter to trigger version list refresh
+  // Counter to trigger version list refresh (any project's markAsSaved bumps it)
   versionSaveCount: number
-  // Thumbnail getter (registered by CanvasArea)
-  thumbnailGetter: ThumbnailGetter | null
 
-  // Actions
-  setProject: (project: Project | null) => void
-  setContent: (content: string) => void
-  setLoading: (loading: boolean) => void
+  // 各项目独立槽 —— 后台项目的 AI 生成继续累积时，画布/缩略图/getter 互不串扰
+  projectById: Record<string, Project>
+  contentByProject: Record<string, string>            // 当前内容（含未保存的）
+  lastSavedContentByProject: Record<string, string>   // 上次保存的（用于算 hasUnsavedChanges）
+  hasUnsavedChangesByProject: Record<string, boolean>
+  thumbnailGetterByProject: Record<string, ThumbnailGetter>
+
+  // Actions —— 所有项目级写入都要求传入 projectId，
+  // 保证后台项目回调不会写到当前活跃项目的槽。
+  setCurrentProjectId: (id: string | null) => void
+  setProject: (projectId: string, project: Project) => void
+  setContent: (projectId: string, content: string) => void
+  setContentFromVersion: (projectId: string, content: string) => void
+  markAsSaved: (projectId: string) => void
   setError: (error: string | null) => void
-  // Mark content as saved (after manual save) and increment version counter
-  markAsSaved: () => void
-  // Set content from loaded version (no unsaved flag)
-  setContentFromVersion: (content: string) => void
-  // Register thumbnail getter
-  setThumbnailGetter: (getter: ThumbnailGetter | null) => void
+  setThumbnailGetter: (projectId: string, getter: ThumbnailGetter | null) => void
+  // 清空所有项目槽（页面关闭 / 整体重置时用）
   reset: () => void
 }
 
 const initialState = {
-  currentProject: null,
-  currentContent: '',
-  isLoading: false,
+  currentProjectId: null,
   error: null,
-  hasUnsavedChanges: false,
-  lastSavedContent: '',
   versionSaveCount: 0,
-  thumbnailGetter: null,
+  projectById: {},
+  contentByProject: {},
+  lastSavedContentByProject: {},
+  hasUnsavedChangesByProject: {},
+  thumbnailGetterByProject: {},
 }
 
-export const useEditorStore = create<EditorState>((set, _get) => ({
+export const useEditorStore = create<EditorState>((set) => ({
   ...initialState,
 
-  setProject: (project) => set({ currentProject: project }),
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
 
-  setContent: (content) => set((state) => ({
-    currentContent: content,
-    hasUnsavedChanges: content !== state.lastSavedContent,
-  })),
+  setProject: (projectId, project) =>
+    set((state) => ({
+      projectById: { ...state.projectById, [projectId]: project },
+    })),
 
-  setLoading: (loading) => set({ isLoading: loading }),
+  setContent: (projectId, content) =>
+    set((state) => {
+      const lastSaved = state.lastSavedContentByProject[projectId] ?? ''
+      return {
+        contentByProject: { ...state.contentByProject, [projectId]: content },
+        hasUnsavedChangesByProject: {
+          ...state.hasUnsavedChangesByProject,
+          [projectId]: content !== lastSaved,
+        },
+      }
+    }),
+
+  setContentFromVersion: (projectId, content) =>
+    set((state) => ({
+      contentByProject: { ...state.contentByProject, [projectId]: content },
+      lastSavedContentByProject: { ...state.lastSavedContentByProject, [projectId]: content },
+      hasUnsavedChangesByProject: {
+        ...state.hasUnsavedChangesByProject,
+        [projectId]: false,
+      },
+    })),
+
+  markAsSaved: (projectId) =>
+    set((state) => {
+      const currentContent = state.contentByProject[projectId] ?? ''
+      return {
+        lastSavedContentByProject: {
+          ...state.lastSavedContentByProject,
+          [projectId]: currentContent,
+        },
+        hasUnsavedChangesByProject: {
+          ...state.hasUnsavedChangesByProject,
+          [projectId]: false,
+        },
+        versionSaveCount: state.versionSaveCount + 1,
+      }
+    }),
 
   setError: (error) => set({ error }),
 
-  markAsSaved: () => set((state) => ({
-    hasUnsavedChanges: false,
-    lastSavedContent: state.currentContent,
-    versionSaveCount: state.versionSaveCount + 1,
-  })),
-
-  setContentFromVersion: (content) => set({
-    currentContent: content,
-    lastSavedContent: content,
-    hasUnsavedChanges: false,
-  }),
-
-  setThumbnailGetter: (getter) => set({ thumbnailGetter: getter }),
+  setThumbnailGetter: (projectId, getter) =>
+    set((state) => {
+      const next = { ...state.thumbnailGetterByProject }
+      if (getter) {
+        next[projectId] = getter
+      } else {
+        delete next[projectId]
+      }
+      return { thumbnailGetterByProject: next }
+    }),
 
   reset: () => set(initialState),
 }))
 
-// Selector helpers
-export const selectEngineType = (state: EditorState): EngineType | null =>
-  state.currentProject?.engineType ?? null
+// —— Selector helpers（取当前活跃项目的派生数据）——
+export const selectActiveProjectId = (s: EditorState): string | null => s.currentProjectId
 
-export const selectIsEmpty = (state: EditorState): boolean =>
-  !state.currentContent || state.currentContent.trim() === ''
+export const selectActiveProject = (s: EditorState): Project | null =>
+  s.currentProjectId ? s.projectById[s.currentProjectId] ?? null : null
+
+export const selectEngineType = (s: EditorState): EngineType | null =>
+  selectActiveProject(s)?.engineType ?? null
+
+export const selectActiveContent = (s: EditorState): string =>
+  s.currentProjectId ? s.contentByProject[s.currentProjectId] ?? '' : ''
+
+export const selectIsEmpty = (s: EditorState): boolean => {
+  const id = s.currentProjectId
+  if (!id) return true
+  const c = s.contentByProject[id]
+  return !c || c.trim() === ''
+}
+
+export const selectActiveHasUnsavedChanges = (s: EditorState): boolean =>
+  s.currentProjectId ? s.hasUnsavedChangesByProject[s.currentProjectId] ?? false : false
+
+export const selectActiveThumbnailGetter = (s: EditorState): ThumbnailGetter | null =>
+  s.currentProjectId ? s.thumbnailGetterByProject[s.currentProjectId] ?? null : null
+
+// 兼容旧 selector 名（EditorPage / CanvasArea 用过 currentProject / currentContent）
+// 保留为 alias，避免一次破坏太多文件
+export const selectEngineTypeLegacy = selectEngineType

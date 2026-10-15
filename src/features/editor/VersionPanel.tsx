@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { RotateCcw, Clock, PanelRightClose } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
-import { useEditorStore } from '@/stores/editorStore'
+import {
+  useEditorStore,
+  selectActiveProject,
+} from '@/stores/editorStore'
 import { VersionRepository } from '@/services/versionRepository'
 import type { VersionHistory } from '@/types'
 
@@ -13,9 +16,9 @@ export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
   const [versions, setVersions] = useState<VersionHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-
-  const currentProject = useEditorStore((s) => s.currentProject)
+  // versionSaveCount 用于触发版本列表刷新（任何 markAsSaved 计数 +1）
   const versionSaveCount = useEditorStore((s) => s.versionSaveCount)
+  const currentProject = useEditorStore(selectActiveProject)
   const setContentFromVersion = useEditorStore((s) => s.setContentFromVersion)
 
   useEffect(() => {
@@ -39,7 +42,8 @@ export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
   }
 
   const handleRestore = async (version: VersionHistory) => {
-    setContentFromVersion(version.content)
+    if (!currentProject) return
+    setContentFromVersion(currentProject.id, version.content)
     setSelectedId(version.id)
   }
 

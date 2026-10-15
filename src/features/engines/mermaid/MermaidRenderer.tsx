@@ -320,6 +320,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const [hasChanges, setHasChanges] = useState(false)
 
   const { setContent } = useEditorStore()
+  const currentProjectId = useEditorStore((s) => s.currentProjectId)
 
   // Sync editedCode when code prop changes
   useEffect(() => {
@@ -690,11 +691,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
   // Apply code changes
   const handleApplyCode = useCallback(() => {
+    if (!currentProjectId) return
     if (editedCode.trim() && editedCode !== code) {
-      setContent(editedCode)
+      setContent(currentProjectId, editedCode)
       setHasChanges(false)
     }
-  }, [editedCode, code, setContent])
+  }, [editedCode, code, setContent, currentProjectId])
 
   // Reset code to original
   const handleResetCode = useCallback(() => {

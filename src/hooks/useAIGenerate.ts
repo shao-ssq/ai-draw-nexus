@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react'
-import { useChatStore } from '@/stores/chatStore'
+import { useChatStore, registerAbortController, unregisterAbortController } from '@/stores/chatStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { usePayloadStore } from '@/stores/payloadStore'
 import { VersionRepository } from '@/services/versionRepository'
@@ -86,8 +86,6 @@ function extractPartialExcalidrawArray(src: string): string | null {
 /**
  * Build content from text and optional document attachments.
  * 图片上传已移除：仅支持文本与文档（docx/txt/md）附件。
- * @param text - The text content
- * @param attachments - Optional user document attachments
  */
 function buildMultimodalContent(
   text: string,
@@ -119,6 +117,12 @@ function buildMultimodalContent(
   return parts
 }
 
+/**
+ * 后台续跑：项目切换不会取消旧请求。但 generate 启动时仍要锁定 projectId，
+ * 所有 store 写入都用字典 slot 路径。这样：
+ * - A 在后台跑，切到 B 时 B 的 UI 完全不受 A 的影响
+ * - 切回 A 时 A 的当前进度（messages / content）从字典槽读出
+ */
 export function useAIGenerate() {
   const {
     addMessage,
@@ -127,11 +131,8 @@ export function useAIGenerate() {
   } = useChatStore()
 
   const {
-    currentProject,
-    currentContent,
     setContent,
     setContentFromVersion,
-    setLoading,
     setProject,
   } = useEditorStore()
 
@@ -147,15 +148,19 @@ export function useAIGenerate() {
   const reasoningTargetRef = useRef('')
   const reasoningMsgIdRef = useRef<string | null>(null)
   const reasoningFirstRef = useRef(true)
+  // 当前生成所属 projectId —— 流式回调按这个 id 写入 store，不依赖 currentProjectId
+  const reasoningProjectIdRef = useRef<string | null>(null)
 
   // main content 渐进显示：聊天面板的代码也按 rAF 推进，避免一段一段弹出。
-  // 注意：editorStore.currentContent（excalidraw 用 partial 增量 updateScene）不受此影响，
-  // 仍走真实累积内容，保证 extractPartialExcalidrawArray 能正确提取完整元素。
   const contentRafRef = useRef<number | null>(null)
   const contentDisplayRef = useRef('')
   const contentTargetRef = useRef('')
   const contentMsgIdRef = useRef<string | null>(null)
   const contentFirstRef = useRef(true)
+  const contentProjectIdRef = useRef<string | null>(null)
+
+  // 当前 generate 的 AbortController —— 用户主动 stop 或切换项目（如果未来要 abort）时调用
+  const currentAbortRef = useRef<AbortController | null>(null)
 
   // main content 渐进 tick：每帧推进 ~1/10 剩余字符
   const tickContent = useCallback(() => {
@@ -166,8 +171,8 @@ export function useAIGenerate() {
     const remaining = target.length - displayed.length
     const step = Math.min(remaining, Math.max(1, Math.ceil(remaining / 10)))
     contentDisplayRef.current = target.slice(0, displayed.length + step)
-    if (contentMsgIdRef.current) {
-      updateMessage(contentMsgIdRef.current, {
+    if (contentMsgIdRef.current && contentProjectIdRef.current) {
+      updateMessage(contentProjectIdRef.current, contentMsgIdRef.current, {
         content: contentDisplayRef.current,
       })
     }
@@ -177,13 +182,14 @@ export function useAIGenerate() {
   }, [updateMessage])
 
   // 写入新 chunk：首段直显避免空白卡顿，后续段 rAF 渐进
-  const handleContentChunk = useCallback((assistantMsgId: string, accumulated: string) => {
+  const handleContentChunk = useCallback((projectId: string, assistantMsgId: string, accumulated: string) => {
     contentMsgIdRef.current = assistantMsgId
+    contentProjectIdRef.current = projectId
     contentTargetRef.current = accumulated
     if (contentFirstRef.current) {
       contentFirstRef.current = false
       contentDisplayRef.current = accumulated
-      updateMessage(assistantMsgId, { content: accumulated })
+      updateMessage(projectId, assistantMsgId, { content: accumulated })
       return
     }
     if (contentRafRef.current === null) {
@@ -193,15 +199,15 @@ export function useAIGenerate() {
 
   /**
    * 流式累积回调：聊天面板走 typewriter（rAF 渐进），excalidraw 画布仍用真实 partial 增量。
+   * projectId 锁定：所有 store 写入都用这个 id，不受 currentProjectId 影响。
    */
   const handleStreamAccumulated = useCallback((
+    projectId: string,
     assistantMsgId: string,
     engineType: EngineType,
     accumulated: string,
-    onThinking?: (isThinking: boolean) => void
   ) => {
-    // 聊天面板用渐进显示（看起来丝滑）
-    handleContentChunk(assistantMsgId, accumulated)
+    handleContentChunk(projectId, assistantMsgId, accumulated)
     // excalidraw 画布用真实 partial（extractPartialExcalidrawArray 提取完整元素）
     if (engineType !== 'excalidraw') return
     const now = Date.now()
@@ -211,24 +217,23 @@ export function useAIGenerate() {
     if (!partial) return
     try {
       JSON.parse(partial) // 校验合法后再写入
-      setContent(partial)
+      setContent(projectId, partial)
     } catch {
       // 仍有不完整片段，跳过本次
     }
   }, [handleContentChunk, setContent])
 
-  // reasoning 内容渐进显示：每帧推进 ~1/10 剩余字符，模拟打字效果
+  // reasoning 内容渐进显示
   const tickReasoning = useCallback(() => {
     reasoningRafRef.current = null
     const target = reasoningTargetRef.current
     const displayed = reasoningDisplayRef.current
     if (target === displayed) return
     const remaining = target.length - displayed.length
-    // 步长：每帧推进剩余的 1/10（最少 1 字符），保证不同长度段落耗时近似
     const step = Math.min(remaining, Math.max(1, Math.ceil(remaining / 10)))
     reasoningDisplayRef.current = target.slice(0, displayed.length + step)
-    if (reasoningMsgIdRef.current) {
-      updateMessage(reasoningMsgIdRef.current, {
+    if (reasoningMsgIdRef.current && reasoningProjectIdRef.current) {
+      updateMessage(reasoningProjectIdRef.current, reasoningMsgIdRef.current, {
         reasoningContent: reasoningDisplayRef.current,
       })
     }
@@ -237,15 +242,15 @@ export function useAIGenerate() {
     }
   }, [updateMessage])
 
-  // reasoning 收到 chunk：写入 target；首段直接显示，后续段通过 tickReasoning 渐进推进
-  const handleReasoningChunk = useCallback((assistantMsgId: string, accumulated: string) => {
+  // reasoning 收到 chunk
+  const handleReasoningChunk = useCallback((projectId: string, assistantMsgId: string, accumulated: string) => {
     reasoningMsgIdRef.current = assistantMsgId
+    reasoningProjectIdRef.current = projectId
     reasoningTargetRef.current = accumulated
     if (reasoningFirstRef.current) {
-      // 第一段直接显示，避免空白卡顿
       reasoningFirstRef.current = false
       reasoningDisplayRef.current = accumulated
-      updateMessage(assistantMsgId, { reasoningContent: accumulated })
+      updateMessage(projectId, assistantMsgId, { reasoningContent: accumulated })
       return
     }
     if (reasoningRafRef.current === null) {
@@ -255,36 +260,52 @@ export function useAIGenerate() {
 
   /**
    * Generate diagram using AI with streaming support
-   * @param userInput - User's description or modification request
-   * @param isInitial - Whether this is initial generation (empty canvas)
-   * @param attachments - Optional attachments (images or documents)
+   *
+   * 关键：projectId 在调用入口处确定，整个生命周期内所有 store 写入都用这个 id。
+   * 即使中途用户在 ProjectsPage 切换了其他项目、当前项目不再是 currentProjectId，
+   * 本次 generate 也会继续在后台跑并写到自己 projectId 的槽里。
    */
   const generate = async (
+    projectId: string,
     userInput: string,
     isInitial: boolean,
     attachments?: Attachment[],
     thinkingMode?: ThinkingLevel,
   ) => {
-    if (!currentProject) return
+    const project = useEditorStore.getState().projectById[projectId]
+    if (!project) {
+      console.error(`[useAIGenerate] project ${projectId} not found`)
+      return
+    }
 
-    const engineType = currentProject.engineType
+    // 锁定 projectId —— 后续所有 store 写入都用这个值，不依赖 currentProjectId
+    const myProjectId = projectId
+    const engineType = project.engineType
+    const currentContent = useEditorStore.getState().contentByProject[myProjectId] ?? ''
+
     // 引擎默认思考策略：默认 medium（适合 Gemini）。
-    // 历史曾默认 disabled；现在按用户偏好统一为中等档位，可在 UI 切换。
-    const effectiveThinking: ThinkingLevel =
-      thinkingMode ?? 'medium'
+    const effectiveThinking: ThinkingLevel = thinkingMode ?? 'medium'
+
+    // 创建 AbortController 并注册 —— 用户主动 stop 时可调用 currentAbortRef.current?.abort()
+    const abortController = new AbortController()
+    currentAbortRef.current = abortController
+    registerAbortController(myProjectId, abortController)
 
     // 首次生成时，发送即根据用户输入自动改名（仅此一次，后续编辑不再触发）
-    // 必须在 AI 调用前执行，并基于 store 最新值合并，避免被后续 setProject 覆盖
-    if (isInitial && isPlaceholderTitle(currentProject.title)) {
+    if (isInitial && isPlaceholderTitle(project.title)) {
       const derivedTitle = deriveTitleFromInput(userInput)
       if (derivedTitle) {
-        await ProjectRepository.update(currentProject.id, { title: derivedTitle })
-        setProject({ ...useEditorStore.getState().currentProject!, title: derivedTitle })
+        try {
+          await ProjectRepository.update(myProjectId, { title: derivedTitle })
+          setProject(myProjectId, { ...project, title: derivedTitle })
+        } catch (err) {
+          console.error('Failed to update title:', err)
+        }
       }
     }
 
-    // Add user message to UI (with attachments)
-    addMessage({
+    // Add user message to UI (with attachments) —— 写到 myProjectId 的槽
+    addMessage(myProjectId, {
       role: 'user',
       content: userInput,
       status: 'complete',
@@ -292,7 +313,7 @@ export function useAIGenerate() {
     })
 
     // Add assistant message placeholder
-    const assistantMsgId = addMessage({
+    const assistantMsgId = addMessage(myProjectId, {
       role: 'assistant',
       content: '',
       status: 'streaming',
@@ -300,22 +321,23 @@ export function useAIGenerate() {
       engineType,
     })
 
-    setStreaming(true)
-    setLoading(true)
+    setStreaming(myProjectId, true)
     // 重置流式渲染节流计时，每次生成独立计时
     lastStreamRenderRef.current = 0
-    // 重置 reasoning 渐进显示状态（每次新消息独立计时）
+    // 重置 reasoning 渐进显示状态
     reasoningFirstRef.current = true
     reasoningDisplayRef.current = ''
     reasoningTargetRef.current = ''
+    reasoningProjectIdRef.current = myProjectId
     if (reasoningRafRef.current !== null) {
       cancelAnimationFrame(reasoningRafRef.current)
       reasoningRafRef.current = null
     }
-    // 重置 main content 渐进显示状态（每次新消息独立计时）
+    // 重置 main content 渐进显示状态
     contentFirstRef.current = true
     contentDisplayRef.current = ''
     contentTargetRef.current = ''
+    contentProjectIdRef.current = myProjectId
     if (contentRafRef.current !== null) {
       cancelAnimationFrame(contentRafRef.current)
       contentRafRef.current = null
@@ -330,32 +352,36 @@ export function useAIGenerate() {
 
         if (useTwoPhase) {
           finalCode = await twoPhaseGeneration(
+            myProjectId,
             userInput,
             engineType,
             assistantMsgId,
             attachments,
-            effectiveThinking
+            effectiveThinking,
+            abortController.signal,
           )
         } else {
           finalCode = await singlePhaseInitialGeneration(
+            myProjectId,
             userInput,
             engineType,
             assistantMsgId,
             attachments,
-            effectiveThinking
+            effectiveThinking,
+            abortController.signal,
           )
         }
       } else {
-        // Single-phase for edits.
-        // 不再发送缩略图：编辑 prompt 已包含完整 currentCode 源码作为上下文，
-        // 且部分 Provider/模型不支持 image_url，发送缩略图会触发 400 错误。
+        // 编辑模式：不附带缩略图（currentCode 源码已作为完整上下文）
         finalCode = await singlePhaseGeneration(
+          myProjectId,
           userInput,
           currentContent,
           engineType,
           assistantMsgId,
           attachments,
-          effectiveThinking
+          effectiveThinking,
+          abortController.signal,
         )
       }
 
@@ -367,10 +393,12 @@ export function useAIGenerate() {
       // Auto-fix mechanism for Mermaid engine
       if (!validation.valid && engineType === 'mermaid') {
         validatedCode = await attemptMermaidAutoFix(
+          myProjectId,
           validatedCode,
           validation.error || 'Unknown error',
           assistantMsgId,
-          effectiveThinking
+          effectiveThinking,
+          abortController.signal,
         )
         // Re-validate after fix attempts
         validation = await validateContent(validatedCode, engineType)
@@ -390,11 +418,9 @@ export function useAIGenerate() {
           : validatedCode
 
       // Update content (AI generation auto-saves, so mark as saved)
-      setContentFromVersion(finalCode)
+      setContentFromVersion(myProjectId, finalCode)
 
       // 流式结束：取消 main content 的 rAF 渐进，强制把 finalCode 写进聊天面板。
-      // 不用 store 里的 streamedContent——那个是 typewriter 渐进到一半的中间值，
-      // 可能比 finalCode 短；用 finalCode 保证和画布完全一致。
       if (contentRafRef.current !== null) {
         cancelAnimationFrame(contentRafRef.current)
         contentRafRef.current = null
@@ -403,7 +429,7 @@ export function useAIGenerate() {
       contentTargetRef.current = finalCode
 
       // Update assistant message: 写入最终代码（与画布一致），切换状态
-      updateMessage(assistantMsgId, {
+      updateMessage(myProjectId, assistantMsgId, {
         content: finalCode && finalCode.trim()
           ? finalCode
           : '图表已生成，可在右侧画布查看或导出。',
@@ -413,7 +439,7 @@ export function useAIGenerate() {
 
       // Save version
       await VersionRepository.create({
-        projectId: currentProject.id,
+        projectId: myProjectId,
         content: finalCode,
         changeSummary: isInitial ? '初始生成' : 'AI 修改',
       })
@@ -429,8 +455,8 @@ export function useAIGenerate() {
             for (let i = 0; i < maxRetries; i++) {
               // Wait for editor to process the new content
               await new Promise(resolve => setTimeout(resolve, delay))
-              // Get fresh thumbnailGetter from store
-              const getter = useEditorStore.getState().thumbnailGetter
+              // Get fresh thumbnailGetter for THIS project (按 projectId 查字典)
+              const getter = useEditorStore.getState().thumbnailGetterByProject[myProjectId]
               if (getter) {
                 const result = await getter()
                 if (result) return result
@@ -444,32 +470,43 @@ export function useAIGenerate() {
           thumbnail = await generateThumbnail(finalCode, engineType)
         }
         if (thumbnail) {
-          await ProjectRepository.update(currentProject.id, { thumbnail })
-          // Update currentProject in store so thumbnail is visible immediately
-          // 基于 store 最新值合并，避免覆盖此前已更新的 title
-          setProject({ ...useEditorStore.getState().currentProject!, thumbnail })
+          await ProjectRepository.update(myProjectId, { thumbnail })
+          // Update project in store (按 projectId 写)
+          const previous = useEditorStore.getState().projectById[myProjectId]
+          if (previous) {
+            setProject(myProjectId, { ...previous, thumbnail })
+          }
         }
       } catch (err) {
         console.error('Failed to generate thumbnail:', err)
       }
 
       // Update project timestamp
-      await ProjectRepository.update(currentProject.id, {})
+      await ProjectRepository.update(myProjectId, {})
 
       success('图表生成成功')
 
     } catch (error) {
+      // AbortError 不显示错误 —— 是用户主动取消或组件卸载
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return
+      }
       console.error('AI generation failed:', error)
       const errMsg = error instanceof Error ? error.message : '生成失败'
-      updateMessage(assistantMsgId, {
+      updateMessage(myProjectId, assistantMsgId, {
         content: `生成失败：${errMsg}`,
         status: 'error',
         phaseLabel: '出错',
       })
       showError(errMsg)
     } finally {
-      setStreaming(false)
-      setLoading(false)
+      // 流式结束清理 —— 只关 myProjectId 的 streaming 状态
+      setStreaming(myProjectId, false)
+      // 注销 controller —— 只对当前正在跑的那个；如果已经被新 generate 接管，不要碰
+      if (currentAbortRef.current === abortController) {
+        currentAbortRef.current = null
+      }
+      unregisterAbortController(myProjectId)
     }
   }
 
@@ -477,14 +514,16 @@ export function useAIGenerate() {
    * Two-phase generation for initial creation (drawio/excalidraw)
    */
   const twoPhaseGeneration = async (
+    projectId: string,
     userInput: string,
     engineType: EngineType,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: ThinkingLevel
+    thinkingMode: ThinkingLevel,
+    signal: AbortSignal,
   ): Promise<string> => {
     // Phase 1: Generate elements
-    updateMessage(assistantMsgId, {
+    updateMessage(projectId, assistantMsgId, {
       content: '',
       status: 'streaming',
       phaseLabel: '阶段 1/2：生成元素',
@@ -507,11 +546,15 @@ export function useAIGenerate() {
         phase1Messages,
         engineType,
         (_chunk, accumulated) => {
-          updateMessage(assistantMsgId, {
+          updateMessage(projectId, assistantMsgId, {
             content: accumulated,
           })
         },
-        thinkingMode
+        thinkingMode,
+        undefined,
+        undefined,
+        undefined,
+        signal,
       )
       elements = extractCode(response, engineType)
     } else {
@@ -520,7 +563,7 @@ export function useAIGenerate() {
     }
 
     // Phase 2: Generate links/connections
-    updateMessage(assistantMsgId, {
+    updateMessage(projectId, assistantMsgId, {
       content: '',
       status: 'streaming',
       phaseLabel: '阶段 2/2：生成连接',
@@ -543,11 +586,15 @@ export function useAIGenerate() {
         phase2Messages,
         engineType,
         (_chunk, accumulated) => {
-          updateMessage(assistantMsgId, {
+          updateMessage(projectId, assistantMsgId, {
             content: accumulated,
           })
         },
-        thinkingMode
+        thinkingMode,
+        undefined,
+        undefined,
+        undefined,
+        signal,
       )
       return extractCode(response, engineType)
     } else {
@@ -560,13 +607,15 @@ export function useAIGenerate() {
    * Single-phase generation for initial creation (mermaid)
    */
   const singlePhaseInitialGeneration = async (
+    projectId: string,
     userInput: string,
     engineType: EngineType,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: ThinkingLevel
+    thinkingMode: ThinkingLevel,
+    signal: AbortSignal,
   ): Promise<string> => {
-    updateMessage(assistantMsgId, {
+    updateMessage(projectId, assistantMsgId, {
       content: '',
       status: 'streaming',
       phaseLabel: '正在生成图表',
@@ -589,20 +638,19 @@ export function useAIGenerate() {
         messages,
         engineType,
         (_chunk, accumulated) => {
-          handleStreamAccumulated(assistantMsgId, engineType, accumulated)
+          handleStreamAccumulated(projectId, assistantMsgId, engineType, accumulated)
         },
         thinkingMode,
         undefined, // onComplete
         (isThinking: boolean) => {
-          updateMessage(assistantMsgId, {
+          updateMessage(projectId, assistantMsgId, {
             phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
           })
         },
         (_chunk: string, reasoningAccumulated: string) => {
-          // 思考内容独立累积，不影响主 content（后者是最终答案）
-          // 走 typewriter 渐进显示，避免大段弹出
-          handleReasoningChunk(assistantMsgId, reasoningAccumulated)
-        }
+          handleReasoningChunk(projectId, assistantMsgId, reasoningAccumulated)
+        },
+        signal,
       )
       return extractCode(response, engineType)
     } else {
@@ -613,21 +661,20 @@ export function useAIGenerate() {
 
   /**
    * Single-phase generation for edits.
-   * 编辑请求不附带缩略图：currentCode 源码已作为完整上下文，
-   * 且避免对不支持 image_url 的 Provider 触发 400。
    */
   const singlePhaseGeneration = async (
+    projectId: string,
     userInput: string,
     currentCode: string,
     engineType: EngineType,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: ThinkingLevel
+    thinkingMode: ThinkingLevel,
+    signal: AbortSignal,
   ): Promise<string> => {
     const editPrompt = buildEditPrompt(currentCode, userInput)
     const editContent = buildMultimodalContent(editPrompt, attachments)
 
-    // 注意：不再发送 system prompt——服务端会按 engine 注入。
     const messages: PayloadMessage[] = [
       { role: 'user', content: editContent },
     ]
@@ -635,24 +682,24 @@ export function useAIGenerate() {
     setMessages(messages)
 
     if (USE_STREAMING) {
-      // 保存原始 phaseLabel，思考结束后恢复
       const originalPhaseLabel = '正在修改图表'
       const response = await aiService.streamChat(
         messages,
         engineType,
         (_chunk, accumulated) => {
-          handleStreamAccumulated(assistantMsgId, engineType, accumulated)
+          handleStreamAccumulated(projectId, assistantMsgId, engineType, accumulated)
         },
         thinkingMode,
-        undefined, // onComplete
+        undefined,
         (isThinking: boolean) => {
-          updateMessage(assistantMsgId, {
+          updateMessage(projectId, assistantMsgId, {
             phaseLabel: isThinking ? '思考中...' : originalPhaseLabel,
           })
         },
         (_chunk: string, reasoningAccumulated: string) => {
-          handleReasoningChunk(assistantMsgId, reasoningAccumulated)
-        }
+          handleReasoningChunk(projectId, assistantMsgId, reasoningAccumulated)
+        },
+        signal,
       )
       return extractCode(response, engineType)
     } else {
@@ -665,10 +712,12 @@ export function useAIGenerate() {
    * Attempt to auto-fix Mermaid code errors by asking AI to fix them
    */
   const attemptMermaidAutoFix = async (
+    projectId: string,
     failedCode: string,
     errorMessage: string,
     assistantMsgId: string,
-    thinkingMode: ThinkingLevel
+    thinkingMode: ThinkingLevel,
+    signal: AbortSignal,
   ): Promise<string> => {
     let currentCode = failedCode
     let currentError = errorMessage
@@ -677,7 +726,7 @@ export function useAIGenerate() {
     while (attempts < MAX_MERMAID_FIX_ATTEMPTS) {
       attempts++
 
-      updateMessage(assistantMsgId, {
+      updateMessage(projectId, assistantMsgId, {
         content: '',
         status: 'streaming',
         phaseLabel: `修复报错 (尝试 ${attempts}/${MAX_MERMAID_FIX_ATTEMPTS})`,
@@ -688,7 +737,6 @@ export function useAIGenerate() {
       报错："""${currentError}"""
       当前代码："""${currentCode}"""`
 
-      // 注意：不再发送 system prompt——服务端会按 engine 注入。
       const messages: PayloadMessage[] = [
         { role: 'user', content: fixPrompt },
       ]
@@ -701,11 +749,15 @@ export function useAIGenerate() {
           messages,
           'mermaid',
           (_chunk, accumulated) => {
-            updateMessage(assistantMsgId, {
+            updateMessage(projectId, assistantMsgId, {
               content: accumulated,
             })
           },
-          thinkingMode
+          thinkingMode,
+          undefined,
+          undefined,
+          undefined,
+          signal,
         )
         fixedCode = extractCode(response, 'mermaid')
       } else {
@@ -724,7 +776,6 @@ export function useAIGenerate() {
       currentError = validation.error || 'Unknown error'
     }
 
-    // Return the last attempted code (will be validated again in caller)
     return currentCode
   }
 

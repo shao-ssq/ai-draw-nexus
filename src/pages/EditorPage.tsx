@@ -5,7 +5,12 @@ import { Button, Input, Loading } from '@/components/ui'
 import { ChatPanel } from '@/features/chat/ChatPanel'
 import { CanvasArea, type CanvasAreaRef } from '@/features/editor/CanvasArea'
 import { VersionPanel } from '@/features/editor/VersionPanel'
-import { useEditorStore } from '@/stores/editorStore'
+import {
+  useEditorStore,
+  selectActiveProject,
+  selectActiveContent,
+  selectActiveHasUnsavedChanges,
+} from '@/stores/editorStore'
 import { useChatStore } from '@/stores/chatStore'
 import { ProjectRepository } from '@/services/projectRepository'
 import { VersionRepository } from '@/services/versionRepository'
@@ -33,46 +38,62 @@ export function EditorPage() {
   const canvasRef = useRef<CanvasAreaRef>(null)
   const { success } = useToast()
 
-  const { currentProject, currentContent, hasUnsavedChanges, setProject, setContentFromVersion, markAsSaved, reset: resetEditor } = useEditorStore()
-  const { loadForProject } = useChatStore()
+  // 字典化 store —— 只取当前活跃项目的派生数据
+  const currentProject = useEditorStore(selectActiveProject)
+  const currentContent = useEditorStore(selectActiveContent)
+  const hasUnsavedChanges = useEditorStore(selectActiveHasUnsavedChanges)
+  const setProject = useEditorStore((s) => s.setProject)
+  const setContentFromVersion = useEditorStore((s) => s.setContentFromVersion)
+  const markAsSaved = useEditorStore((s) => s.markAsSaved)
+  const setCurrentProjectId = useEditorStore((s) => s.setCurrentProjectId)
+  const loadForProject = useChatStore((s) => s.loadForProject)
 
-  // Load project on mount
+  // Load project on mount and when projectId changes
+  // 后台续跑：loadProject 不 abort 任何项目；切换时旧项目的 fetch 继续在后台跑。
   useEffect(() => {
     if (!projectId) {
       navigate('/projects')
       return
     }
-
-    loadProject(projectId)
+    let cancelled = false
+    const isCancelled = () => cancelled
+    loadProject(projectId, isCancelled)
+    return () => {
+      cancelled = true
+    }
   }, [projectId])
 
-  const loadProject = async (id: string) => {
+  const loadProject = async (id: string, isCancelled: () => boolean) => {
     setIsLoading(true)
-    // Clear previous project data before loading new one
-    resetEditor()
+    // 仅切视图：把 id 设为活跃项目。
+    // 不调 resetEditor()、不 abort 任何后台流 —— 它们各自在字典槽里继续累积。
+    setCurrentProjectId(id)
     try {
       const project = await ProjectRepository.getById(id)
+      if (isCancelled()) return
       if (!project) {
         navigate('/projects')
         return
       }
 
-      setProject(project)
+      setProject(id, project)
       setEditedTitle(project.title)
 
-      // Load latest version content
+      // Load latest version content —— 写到 id 槽，不影响其他槽
       const latestVersion = await VersionRepository.getLatest(id)
+      if (isCancelled()) return
       if (latestVersion) {
-        setContentFromVersion(latestVersion.content)
+        setContentFromVersion(id, latestVersion.content)
       }
 
-      // 加载该项目的历史对话记录
+      // 切换 chatStore 的活跃项目 + 加载该项目的历史对话记录
       await loadForProject(id)
     } catch (error) {
+      if (isCancelled()) return
       console.error('Failed to load project:', error)
       navigate('/projects')
     } finally {
-      setIsLoading(false)
+      if (!isCancelled()) setIsLoading(false)
     }
   }
 
@@ -128,7 +149,7 @@ export function EditorPage() {
 
     try {
       await ProjectRepository.update(currentProject.id, { title: editedTitle.trim() })
-      setProject({ ...currentProject, title: editedTitle.trim() })
+      setProject(currentProject.id, { ...currentProject, title: editedTitle.trim() })
       setIsEditingTitle(false)
       success('标题已更新')
     } catch (error) {
@@ -160,7 +181,7 @@ export function EditorPage() {
         content: currentContent,
         changeSummary: '人工调整',
       })
-      markAsSaved()
+      markAsSaved(currentProject.id)
 
       // Update thumbnail for drawio using native export
       if (currentProject.engineType === 'drawio' && canvasRef.current) {

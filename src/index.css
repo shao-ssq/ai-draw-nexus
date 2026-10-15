@@ -372,9 +372,20 @@ body {
 .ai-reasoning-content {
   max-height: 200px;
   overflow-y: auto;
+  scrollbar-width: thin;
   padding: 8px 10px;
   border-top: 1px solid var(--color-border-subtle, #e5e7eb);
   background: var(--color-surface, #ffffff);
+}
+.ai-reasoning-content::-webkit-scrollbar {
+  width: 4px;
+}
+.ai-reasoning-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ai-reasoning-content::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle, #e5e7eb);
+  border-radius: 2px;
 }
 
 /* 头部内联过程状态 */

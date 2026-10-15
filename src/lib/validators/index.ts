@@ -86,18 +86,22 @@ export function validateDrawio(xml: string): ValidationResult {
   try {
     const parser = new DOMParser()
 
-    // The AI sometimes emits an XML prolog (<?xml...?>) before the mxCell
-    // fragments. DOMParser treats the prolog as part of the document prolog;
-    // if the prolog is followed by something that is not the opening of the
-    // mxfile root element, wrapToMxfile() will wrap the prolog+fragments
-    // together, producing two top-level elements (prolog + <mxfile>) — an
-    // invalid XML document whose error message is "Extra content at the end
-    // of the document".
-    //
-    // Strip any leading prolog/declaration so the rest is treated as the
-    // fragment to be validated and (if needed) wrapped.
-    const stripped = xml.replace(/^\s*<\?xml[^?]*\?>\s*/i, '')
-    const doc = parser.parseFromString(stripped, 'text/xml')
+    // 1) The AI sometimes emits an XML prolog (<?xml...?>) before the
+    //    mxCell fragments. Strip it before parsing.
+    let toParse = xml.replace(/^\s*<\?xml[^?]*\?>\s*/i, '').trim()
+
+    // 2) AI 输出通常是多个兄弟 <mxCell>（按 apply prompt 禁止写外层 mxfile 包装）。
+    //    严格 XML 文档只能有 1 个根元素；DOMParser('text/xml') 会把第一个
+    //    <mxCell> 当根元素、后面的当成 "extra content at the end of the
+    //    document" 报错。
+    //    临时用 <mxroot> 包一层再解析（wrapper 仅用于 validate，不修改原数据）；
+    //    已带 <mxfile> 包装的则直接解析（已经是单根树）。
+    const isAlreadyWrapped = /^<mxfile[\s>]/i.test(toParse)
+    if (!isAlreadyWrapped) {
+      toParse = `<mxroot>${toParse}</mxroot>`
+    }
+
+    const doc = parser.parseFromString(toParse, 'text/xml')
 
     // Check for parsing errors
     const parseError = doc.querySelector('parsererror')

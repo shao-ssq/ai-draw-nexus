@@ -14,8 +14,16 @@ import {
   Brain,
 } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
-import { useChatStore } from '@/stores/chatStore'
-import { useEditorStore, selectIsEmpty, selectEngineType } from '@/stores/editorStore'
+import {
+  useChatStore,
+  selectActiveMessages,
+  selectActiveIsStreaming,
+} from '@/stores/chatStore'
+import {
+  useEditorStore,
+  selectIsEmpty,
+  selectEngineType,
+} from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
 import {
@@ -197,7 +205,17 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
 
-  const { messages, isStreaming, initialPrompt, initialAttachments, initialThinkingMode, clearInitialPrompt, clearMessages } = useChatStore()
+  // 字典化 store —— ChatPanel 只看当前活跃项目的消息和流式状态
+  const messages = useChatStore(selectActiveMessages)
+  const isStreaming = useChatStore(selectActiveIsStreaming)
+  const currentProjectId = useChatStore((s) => s.currentProjectId)
+  const initialPrompt = useChatStore((s) => s.initialPrompt)
+  const initialAttachments = useChatStore((s) => s.initialAttachments)
+  const initialThinkingMode = useChatStore((s) => s.initialThinkingMode)
+  const clearInitialPrompt = useChatStore((s) => s.clearInitialPrompt)
+  const clearMessages = useChatStore((s) => s.clearMessages)
+  const abortStream = useChatStore((s) => s.abortStream)
+
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const engineType = useEditorStore(selectEngineType)
   const { generate } = useAIGenerate()
@@ -249,7 +267,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   // Handle initial prompt from Quick Start (Path A)
   useEffect(() => {
-    if (initialPrompt && !hasHandledInitialPrompt.current) {
+    if (initialPrompt && !hasHandledInitialPrompt.current && currentProjectId) {
       hasHandledInitialPrompt.current = true
       const attachmentsToSend = initialAttachments ?? undefined
       // 从首页进来时，思考档位直接用首页选择（initialThinkingMode），
@@ -258,7 +276,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       clearInitialPrompt()
       handleSend(initialPrompt, attachmentsToSend, initialMode)
     }
-  }, [initialPrompt, initialAttachments, initialThinkingMode])
+  }, [initialPrompt, initialAttachments, initialThinkingMode, currentProjectId])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -306,6 +324,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     // 从首页 QuickStart 进入时直接传思考档位，避免依赖闭包里未初始化的 thinkingLevel
     forceThinkingLevel?: ThinkingLevel,
   ) => {
+    if (!currentProjectId) return
     const message = text || inputValue.trim()
     if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
 
@@ -313,7 +332,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     setInputValue('')
     setAttachments([])
     const effectiveThinking: ThinkingLevel = forceThinkingLevel ?? thinkingLevel
-    await generate(message, isCanvasEmpty, currentAttachments, effectiveThinking)
+    await generate(currentProjectId, message, isCanvasEmpty, currentAttachments, effectiveThinking)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -325,10 +344,10 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   // 重新生成：找到最后一条用户消息并以其内容重新触发
   const handleRegenerate = async () => {
-    if (isStreaming) return
+    if (isStreaming || !currentProjectId) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
-    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingLevel)
+    await generate(currentProjectId, lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingLevel)
   }
 
   return (
@@ -356,7 +375,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
             variant="ghost"
             size="icon"
             title="新建对话"
-            onClick={clearMessages}
+            onClick={() => currentProjectId && clearMessages(currentProjectId)}
             disabled={isStreaming || messages.length === 0}
             className="rounded-lg border border-[#e5e7eb]"
           >

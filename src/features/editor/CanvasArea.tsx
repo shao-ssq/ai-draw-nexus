@@ -1,5 +1,15 @@
 import { useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
-import { useEditorStore, selectEngineType } from '@/stores/editorStore'
+import {
+  useEditorStore,
+  selectActiveContent,
+  selectActiveProjectId,
+  selectActiveProject,
+  selectEngineType,
+} from '@/stores/editorStore'
+import {
+  useChatStore,
+  selectActiveIsStreaming,
+} from '@/stores/chatStore'
 import { MermaidRenderer, type MermaidRendererRef } from '@/features/engines/mermaid/MermaidRenderer'
 import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/excalidraw/ExcalidrawEditor'
 import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/DrawioEditor'
@@ -15,16 +25,19 @@ export interface CanvasAreaRef {
 }
 
 export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) {
-  const currentContent = useEditorStore((s) => s.currentContent)
-  const currentProject = useEditorStore((s) => s.currentProject)
+  // 字典化 store —— 切换项目只换槽位，旧槽位的里继续保留后台请求的累积
+  const currentContent = useEditorStore(selectActiveContent)
+  const currentProjectId = useEditorStore(selectActiveProjectId)
+  const currentProject = useEditorStore(selectActiveProject)
   const engineType = useEditorStore(selectEngineType)
-  const isLoading = useEditorStore((s) => s.isLoading)
+  // Loading overlay 只反映当前活跃项目的流式状态 —— 后台项目的 streaming 不会污染当前 UI
+  const isLoading = useChatStore(selectActiveIsStreaming)
   const setContent = useEditorStore((s) => s.setContent)
   const setThumbnailGetter = useEditorStore((s) => s.setThumbnailGetter)
 
   // Use projectId as key to force remount when switching projects
   // This prevents Excalidraw from using its internal localStorage cache
-  const projectKey = currentProject?.id || 'no-project'
+  const projectKey = currentProjectId || 'no-project'
 
   // Refs for each engine
   const mermaidRef = useRef<MermaidRendererRef>(null)
@@ -119,23 +132,23 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
     },
   }), [engineType])
 
-  // Register thumbnail getter for drawio engine
+  // Register thumbnail getter for drawio engine (按 projectId 注册，
+  // 后台项目的 thumbnailGetter 各自独立，互不影响)
   useEffect(() => {
-    if (engineType === 'drawio') {
-      setThumbnailGetter(async () => {
+    if (engineType === 'drawio' && currentProjectId) {
+      const projectId = currentProjectId
+      setThumbnailGetter(projectId, async () => {
         if (drawioRef.current) {
           return drawioRef.current.getThumbnail()
         }
         return ''
       })
-    } else {
-      setThumbnailGetter(null)
+      return () => {
+        setThumbnailGetter(projectId, null)
+      }
     }
-
-    return () => {
-      setThumbnailGetter(null)
-    }
-  }, [engineType, setThumbnailGetter])
+    // 其他引擎不注册，useAIGenerate 会用 generateThumbnail 兜底
+  }, [engineType, currentProjectId, setThumbnailGetter])
 
   if (!engineType) {
     return (
@@ -147,14 +160,22 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
 
   // Handle content change from editors - only update store, no auto-save to database
   const handleContentChange = useCallback((newContent: string) => {
-    setContent(newContent)
-  }, [setContent])
+    if (!currentProjectId) return
+    setContent(currentProjectId, newContent)
+  }, [setContent, currentProjectId])
 
   // Render based on engine type
   const renderEngine = () => {
+    if (!currentProjectId) return null
     switch (engineType) {
       case 'mermaid':
-        return <MermaidRenderer ref={mermaidRef} code={currentContent} />
+        return (
+          <MermaidRenderer
+            ref={mermaidRef}
+            key={projectKey}
+            code={currentContent}
+          />
+        )
       case 'excalidraw':
         return (
           <ExcalidrawEditor

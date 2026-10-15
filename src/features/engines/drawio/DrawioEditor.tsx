@@ -293,8 +293,12 @@ function downloadBlob(href: string, filename: string) {
  * 把复用中的 EditorUi 画布重置为空白状态。
  * 新建项目没有历史版本（data 为空），但 EditorUi 是跨项目复用的全局单例，
  * 不主动清空的话新项目会显示上一个项目的内容。
- * 与 initializeCanvas 里清默认页的循环不同：这里不限制 isVertex，
- * root 的子节点（layer / 残留 cell）全部移除，保证彻底清空。
+ *
+ * 关键：必须保留 drawio 的 base cells（id="0" 和 id="1" parent="0"），
+ * 它们是 Graph 的 base structure，不参与 vertex/edge 渲染但 graph 工作所必需。
+ * 老逻辑用 `model.remove(child)` 一律删除，把 base cells 也清掉了，
+ * 导致后续 setFileData 不能正常显示（画布灰色），必须刷新才能恢复。
+ * 现在只移除 vertex pages（其他项目残留的内容），与 initializeCanvas 保持一致。
  */
 function resetCanvas(ui: any): void {
   try {
@@ -305,10 +309,25 @@ function resetCanvas(ui: any): void {
 
     model.beginUpdate()
     try {
-      for (let i = model.getChildCount(root) - 1; i >= 0; i--) {
-        const child = model.getChildAt(root, i)
-        if (child) model.remove(child)
+      // 递归清空：保留 base cells (id="0" root, id="1" default layer) 本身，
+      // 但清空它们 children 里的所有非 base cell（包括上次的 user 内容）。
+      // 老逻辑只删 root 的直接 children —— 上次的 mxCell 嵌在 layer.children
+      // 里（layer id="1" 是 root 的 child），不被删除，导致切到新项目时
+      // 画布仍显示上次的画布内容。
+      const BASE_CELL_IDS = new Set(['0', '1'])
+      const cleanSubtree = (parent: any) => {
+        for (let i = model.getChildCount(parent) - 1; i >= 0; i--) {
+          const child = model.getChildAt(parent, i)
+          if (!child) continue
+          if (BASE_CELL_IDS.has(child.id)) {
+            // 保留 base cell 但递归清空它的 children
+            cleanSubtree(child)
+            continue
+          }
+          model.remove(child)
+        }
       }
+      cleanSubtree(root)
     } finally {
       model.endUpdate()
     }
@@ -865,6 +884,17 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       // 必须显式重置画布，否则旧项目的内容会残留显示在新画板上
       if (!data) {
         resetCanvas(ui)
+        // 强制 view 刷新（fast path 没调 initializeCanvas，view 缓存可能 stale）
+        const refreshView = () => {
+          try {
+            ui.editor?.refresh?.()
+            ui.editor?.graph?.refresh?.()
+          } catch { /* noop */ }
+        }
+        // 多重 refresh 兜底 drawio 内部 view 同步时序
+        setTimeout(refreshView, 0)
+        setTimeout(refreshView, 50)
+        setTimeout(refreshView, 200)
         return
       }
 
@@ -875,9 +905,41 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       }
 
       try {
-        ui.setFileData(ensureMxfileWrapped(data))
+        const wrapped = ensureMxfileWrapped(data)
+        // 直接用 mxGraph API 设置 model —— 绕开 drawio Editor.setFileData 的
+        // 内部状态问题。drawio 在 fast path 跨项目 remount 时 EditorUi 复用，
+        // setFileData 可能在 view cache 失效时不能正确显示；直接 setModel +
+        // view.revalidate + refresh 更直接。
+        if (ui.editor?.graph && window.mxUtils?.createModel) {
+          const doc = window.mxUtils.parseXml(wrapped)
+          const modelNode = doc?.documentElement
+          if (modelNode) {
+            const newModel = window.mxUtils.createModel(modelNode)
+            if (newModel) {
+              ui.editor.graph.setModel(newModel)
+            }
+          }
+        } else {
+          // 兜底：原 setFileData 路径
+          ui.setFileData(wrapped)
+        }
         ui.setPageVisible(false)
         ui.editor.setModified(false)
+        // 强制 view 完全重绘
+        const reset = () => {
+          try {
+            ui.editor?.refresh?.()
+            ui.editor?.graph?.refresh?.()
+            ui.editor?.graph?.view?.validate?.()
+            ui.editor?.graph?.view?.revalidate?.()
+            ui.editor?.graph?.repaint?.()
+            ui.setPageVisible?.(false)
+          } catch { /* noop */ }
+        }
+        setTimeout(reset, 0)
+        setTimeout(reset, 50)
+        setTimeout(reset, 200)
+        setTimeout(reset, 500)
       } catch (e) {
         console.error('[DrawioEditor] setFileData failed', e)
       }
