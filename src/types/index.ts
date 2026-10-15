@@ -1,6 +1,9 @@
 // Engine Types
 export type EngineType = 'mermaid' | 'excalidraw' | 'drawio'
 
+/** Gemini 思考档位：非思考(low) / 思考(medium) / 深度思考(high)，默认 medium */
+export type ThinkingLevel = 'low' | 'medium' | 'high'
+
 // Project
 export interface Project {
   id: string
@@ -61,7 +64,13 @@ export interface PayloadMessage {
 
 // API Request
 export interface ChatRequest {
+  /**
+   * Engine the request is targeting. The server uses this to inject the
+   * engine-specific system prompt before forwarding to the AI provider.
+   */
+  engine?: EngineType
   messages: PayloadMessage[]
   stream?: boolean
-  thinking?: 'enabled' | 'disabled'
+  /** 思考档位 'low' | 'medium' | 'high'，默认 'medium' */
+  thinking?: ThinkingLevel
 }

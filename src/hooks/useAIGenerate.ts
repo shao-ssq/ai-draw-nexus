@@ -5,7 +5,6 @@ import { usePayloadStore } from '@/stores/payloadStore'
 import { VersionRepository } from '@/services/versionRepository'
 import { ProjectRepository } from '@/services/projectRepository'
 import {
-  SYSTEM_PROMPTS,
   buildInitialPrompt,
   buildEditPrompt,
   extractCode,
@@ -15,7 +14,7 @@ import { aiService } from '@/services/aiService'
 import { validateContent } from '@/lib/validators'
 import { ensureMxfileWrapped } from '@/lib/drawioXml'
 import { useToast } from '@/hooks/useToast'
-import type { PayloadMessage, EngineType, Attachment, ContentPart } from '@/types'
+import type { PayloadMessage, EngineType, Attachment, ContentPart, ThinkingLevel } from '@/types'
 
 // Enable streaming by default, can be configured
 const USE_STREAMING = true
@@ -264,17 +263,15 @@ export function useAIGenerate() {
     userInput: string,
     isInitial: boolean,
     attachments?: Attachment[],
-    thinkingMode?: 'enabled' | 'disabled',
+    thinkingMode?: ThinkingLevel,
   ) => {
     if (!currentProject) return
 
     const engineType = currentProject.engineType
-    const systemPrompt = SYSTEM_PROMPTS[engineType]
-    // 引擎默认思考策略：全部默认 disabled。
-    // 历史曾给 Excalidraw 默认 enabled，但 GLM 等兼容端点 stream+thinking 组合会触发上游 500。
-    // 用户可在 UI 显式开启 thinking 切换。
-    const effectiveThinking: 'enabled' | 'disabled' =
-      thinkingMode ?? 'disabled'
+    // 引擎默认思考策略：默认 medium（适合 Gemini）。
+    // 历史曾默认 disabled；现在按用户偏好统一为中等档位，可在 UI 切换。
+    const effectiveThinking: ThinkingLevel =
+      thinkingMode ?? 'medium'
 
     // 首次生成时，发送即根据用户输入自动改名（仅此一次，后续编辑不再触发）
     // 必须在 AI 调用前执行，并基于 store 最新值合并，避免被后续 setProject 覆盖
@@ -335,7 +332,6 @@ export function useAIGenerate() {
           finalCode = await twoPhaseGeneration(
             userInput,
             engineType,
-            systemPrompt,
             assistantMsgId,
             attachments,
             effectiveThinking
@@ -344,7 +340,6 @@ export function useAIGenerate() {
           finalCode = await singlePhaseInitialGeneration(
             userInput,
             engineType,
-            systemPrompt,
             assistantMsgId,
             attachments,
             effectiveThinking
@@ -358,7 +353,6 @@ export function useAIGenerate() {
           userInput,
           currentContent,
           engineType,
-          systemPrompt,
           assistantMsgId,
           attachments,
           effectiveThinking
@@ -375,7 +369,6 @@ export function useAIGenerate() {
         validatedCode = await attemptMermaidAutoFix(
           validatedCode,
           validation.error || 'Unknown error',
-          systemPrompt,
           assistantMsgId,
           effectiveThinking
         )
@@ -486,10 +479,9 @@ export function useAIGenerate() {
   const twoPhaseGeneration = async (
     userInput: string,
     engineType: EngineType,
-    systemPrompt: string,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: 'enabled' | 'disabled'
+    thinkingMode: ThinkingLevel
   ): Promise<string> => {
     // Phase 1: Generate elements
     updateMessage(assistantMsgId, {
@@ -502,8 +494,8 @@ export function useAIGenerate() {
     const phase1Prompt = buildInitialPrompt(userInput, true, 'elements')
     const phase1Content = buildMultimodalContent(phase1Prompt, attachments)
 
+    // 注意：不再发送 system prompt——服务端会按 engine 注入。
     const phase1Messages: PayloadMessage[] = [
-      { role: 'system', content: systemPrompt },
       { role: 'user', content: phase1Content },
     ]
 
@@ -513,6 +505,7 @@ export function useAIGenerate() {
     if (USE_STREAMING) {
       const response = await aiService.streamChat(
         phase1Messages,
+        engineType,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
             content: accumulated,
@@ -522,7 +515,7 @@ export function useAIGenerate() {
       )
       elements = extractCode(response, engineType)
     } else {
-      const response = await aiService.chat(phase1Messages)
+      const response = await aiService.chat(phase1Messages, engineType)
       elements = extractCode(response, engineType)
     }
 
@@ -538,7 +531,6 @@ export function useAIGenerate() {
     const phase2Prompt = buildInitialPrompt(userInput, true, 'links', elements)
     const phase2Content = buildMultimodalContent(phase2Prompt, attachments)
     const phase2Messages: PayloadMessage[] = [
-      { role: 'system', content: systemPrompt },
       { role: 'user', content: phase1Content },
       { role: 'assistant', content: elements },
       { role: 'user', content: phase2Content },
@@ -549,6 +541,7 @@ export function useAIGenerate() {
     if (USE_STREAMING) {
       const response = await aiService.streamChat(
         phase2Messages,
+        engineType,
         (_chunk, accumulated) => {
           updateMessage(assistantMsgId, {
             content: accumulated,
@@ -558,7 +551,7 @@ export function useAIGenerate() {
       )
       return extractCode(response, engineType)
     } else {
-      const response = await aiService.chat(phase2Messages)
+      const response = await aiService.chat(phase2Messages, engineType)
       return extractCode(response, engineType)
     }
   }
@@ -569,10 +562,9 @@ export function useAIGenerate() {
   const singlePhaseInitialGeneration = async (
     userInput: string,
     engineType: EngineType,
-    systemPrompt: string,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: 'enabled' | 'disabled'
+    thinkingMode: ThinkingLevel
   ): Promise<string> => {
     updateMessage(assistantMsgId, {
       content: '',
@@ -583,8 +575,8 @@ export function useAIGenerate() {
     const prompt = buildInitialPrompt(userInput, false, undefined, undefined, engineType)
     const content = buildMultimodalContent(prompt, attachments)
 
+    // 注意：不再发送 system prompt——服务端会按 engine 注入。
     const messages: PayloadMessage[] = [
-      { role: 'system', content: systemPrompt },
       { role: 'user', content: content },
     ]
 
@@ -595,6 +587,7 @@ export function useAIGenerate() {
       const originalPhaseLabel = '正在生成图表'
       const response = await aiService.streamChat(
         messages,
+        engineType,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         },
@@ -613,7 +606,7 @@ export function useAIGenerate() {
       )
       return extractCode(response, engineType)
     } else {
-      const response = await aiService.chat(messages)
+      const response = await aiService.chat(messages, engineType)
       return extractCode(response, engineType)
     }
   }
@@ -627,16 +620,15 @@ export function useAIGenerate() {
     userInput: string,
     currentCode: string,
     engineType: EngineType,
-    systemPrompt: string,
     assistantMsgId: string,
     attachments: Attachment[] | undefined,
-    thinkingMode: 'enabled' | 'disabled'
+    thinkingMode: ThinkingLevel
   ): Promise<string> => {
     const editPrompt = buildEditPrompt(currentCode, userInput)
     const editContent = buildMultimodalContent(editPrompt, attachments)
 
+    // 注意：不再发送 system prompt——服务端会按 engine 注入。
     const messages: PayloadMessage[] = [
-      { role: 'system', content: systemPrompt },
       { role: 'user', content: editContent },
     ]
 
@@ -647,6 +639,7 @@ export function useAIGenerate() {
       const originalPhaseLabel = '正在修改图表'
       const response = await aiService.streamChat(
         messages,
+        engineType,
         (_chunk, accumulated) => {
           handleStreamAccumulated(assistantMsgId, engineType, accumulated)
         },
@@ -663,7 +656,7 @@ export function useAIGenerate() {
       )
       return extractCode(response, engineType)
     } else {
-      const response = await aiService.chat(messages)
+      const response = await aiService.chat(messages, engineType)
       return extractCode(response, engineType)
     }
   }
@@ -674,9 +667,8 @@ export function useAIGenerate() {
   const attemptMermaidAutoFix = async (
     failedCode: string,
     errorMessage: string,
-    systemPrompt: string,
     assistantMsgId: string,
-    thinkingMode: 'enabled' | 'disabled'
+    thinkingMode: ThinkingLevel
   ): Promise<string> => {
     let currentCode = failedCode
     let currentError = errorMessage
@@ -696,8 +688,8 @@ export function useAIGenerate() {
       报错："""${currentError}"""
       当前代码："""${currentCode}"""`
 
+      // 注意：不再发送 system prompt——服务端会按 engine 注入。
       const messages: PayloadMessage[] = [
-        { role: 'system', content: systemPrompt },
         { role: 'user', content: fixPrompt },
       ]
 
@@ -707,6 +699,7 @@ export function useAIGenerate() {
       if (USE_STREAMING) {
         const response = await aiService.streamChat(
           messages,
+          'mermaid',
           (_chunk, accumulated) => {
             updateMessage(assistantMsgId, {
               content: accumulated,
@@ -716,7 +709,7 @@ export function useAIGenerate() {
         )
         fixedCode = extractCode(response, 'mermaid')
       } else {
-        const response = await aiService.chat(messages)
+        const response = await aiService.chat(messages, 'mermaid')
         fixedCode = extractCode(response, 'mermaid')
       }
 

@@ -1,14 +1,15 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Send, Brain } from 'lucide-react'
+import { FileText, Send } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
-import type { EngineType, Attachment, DocumentAttachment } from '@/types'
+import type { EngineType, Attachment, DocumentAttachment, ThinkingLevel } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
 import { useTypewriter } from '@/hooks/useTypewriter'
 import { parseDocument } from '@/lib/fileUtils'
+import { ThinkingLevelSelector } from '@/features/chat/ThinkingLevelSelector'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -16,7 +17,7 @@ export function HomePage() {
   const [selectedEngine, setSelectedEngine] = useState<EngineType>('mermaid')
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
-  const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setInitialPrompt = useChatStore((state) => state.setInitialPrompt)
@@ -54,7 +55,7 @@ export function HomePage() {
 
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
-      setInitialPrompt(prompt.trim(), allAttachments, thinkingEnabled)
+      setInitialPrompt(prompt.trim(), allAttachments, thinkingLevel)
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -244,19 +245,12 @@ export function HomePage() {
                     <FileText className="h-4 w-4" />
                   </button>
 
-                  {/* 思考模式开关 */}
-                  <button
-                    onClick={() => setThinkingEnabled((v) => !v)}
-                    title="开启深度思考，生成更详细的图表规划（仅支持 Kimi 等支持推理的模型）"
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium transition-colors ${
-                      thinkingEnabled
-                        ? 'border-[#a78bfa] bg-[#ede9fe] text-[#6d28d9]'
-                        : 'border-border bg-[#f3f4f6] text-[#374151] hover:bg-[#e5e7eb]'
-                    }`}
-                  >
-                    <Brain className="h-3.5 w-3.5" />
-                    <span>深度思考</span>
-                  </button>
+                  {/* 思考档位选择器（关 / 低 / 中 / 高） */}
+                  <ThinkingLevelSelector
+                    value={thinkingLevel}
+                    onChange={setThinkingLevel}
+                    variant="pill"
+                  />
 
                   {/* 发送按钮 */}
                   <Button

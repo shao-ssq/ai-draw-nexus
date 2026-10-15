@@ -1,70 +1,57 @@
 import { Hono } from 'hono'
-import type { Env, ChatRequest } from '../_shared/types.js'
+import type { ChatRequest, Message, ThinkingLevel } from '../_shared/types.js'
 import { corsHeaders } from '../_shared/cors.js'
-import { callOpenAI, callAnthropic, callKimi } from '../_shared/ai-providers.js'
-import { streamOpenAI } from '../_shared/stream-openai.js'
-import { streamAnthropic } from '../_shared/stream-anthropic.js'
-import { streamKimi } from '../_shared/stream-kimi.js'
+import { callGemini } from '../_shared/ai-providers.js'
+import { streamGemini } from '../_shared/stream-gemini.js'
+import { SYSTEM_PROMPTS } from '../_shared/systemPrompts.js'
 
 const app = new Hono()
 
-function getEnv(): Env {
-  return {
-    AI_PROVIDER: process.env.AI_PROVIDER || 'openai',
-    AI_BASE_URL: process.env.AI_BASE_URL || '',
-    AI_API_KEY: process.env.AI_API_KEY || '',
-    AI_MODEL_ID: process.env.AI_MODEL_ID || '',
-    AI_THINKING: process.env.AI_THINKING,
-  }
+/** Engine-specific system prompt, injected server-side (no longer on the wire). */
+function injectSystemPrompt(
+  messages: Message[],
+  engine: ChatRequest['engine']
+): Message[] {
+  if (!engine) return messages
+  const systemPrompt = SYSTEM_PROMPTS[engine]
+  if (!systemPrompt) return messages
+  const nonSystem = messages.filter((m) => m.role !== 'system')
+  return [{ role: 'system', content: systemPrompt }, ...nonSystem]
+}
+
+/** Gemini-only: default to medium thinking. */
+function resolveThinking(input: string | undefined): ThinkingLevel {
+  const t = (input || '').toLowerCase()
+  if (t === 'low' || t === 'high') return t
+  return 'medium'
 }
 
 app.options('/chat', (c) => c.body(null, { headers: corsHeaders }))
 
 app.post('/chat', async (c) => {
-  const env = getEnv()
-
   try {
     const body: ChatRequest = await c.req.json()
-    const { messages, stream = false } = body
+    const { engine, messages, stream = false } = body
 
     if (!messages || !Array.isArray(messages)) {
       return c.json({ error: 'Invalid request: messages required' }, 400, corsHeaders)
     }
 
-    const provider = env.AI_PROVIDER || 'openai'
-    // 请求体 thinking 覆盖 env AI_THINKING（未传则用 env 默认 disabled）
-    const effectiveEnv: Env = body.thinking
-      ? { ...env, AI_THINKING: body.thinking }
-      : env
+    const thinking = resolveThinking(body.thinking ?? process.env.AI_THINKING)
+    const env = {
+      AI_BASE_URL: process.env.AI_BASE_URL || '',
+      AI_API_KEY: process.env.AI_API_KEY || '',
+      AI_MODEL_ID: process.env.AI_MODEL_ID || '',
+      AI_GEMINI_BASE_URL: process.env.AI_GEMINI_BASE_URL || '',
+    }
+    const finalMessages = injectSystemPrompt(messages, engine)
 
     if (stream) {
-      switch (provider) {
-        case 'anthropic':
-          return streamAnthropic(messages, effectiveEnv)
-        case 'kimi':
-          return streamKimi(messages, effectiveEnv)
-        case 'openai':
-        default:
-          return streamOpenAI(messages, effectiveEnv)
-      }
-    } else {
-      let response: string
-
-      switch (provider) {
-        case 'anthropic':
-          response = await callAnthropic(messages, effectiveEnv)
-          break
-        case 'kimi':
-          response = await callKimi(messages, effectiveEnv)
-          break
-        case 'openai':
-        default:
-          response = await callOpenAI(messages, effectiveEnv)
-          break
-      }
-
-      return c.json({ content: response }, 200, corsHeaders)
+      return streamGemini(finalMessages, env, thinking)
     }
+
+    const content = await callGemini(finalMessages, env, thinking)
+    return c.json({ content }, 200, corsHeaders)
   } catch (error) {
     console.error('Chat error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'

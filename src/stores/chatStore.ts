@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { ChatMessage, Attachment } from '@/types'
+import type { ChatMessage, Attachment, ThinkingLevel } from '@/types'
 import { ChatRepository } from '@/services/chatRepository'
 
 interface ChatState {
@@ -12,8 +12,8 @@ interface ChatState {
   initialPrompt: string | null
   // Initial attachments from Quick Start (Path A)
   initialAttachments: Attachment[] | null
-  // Initial thinking mode from Quick Start (Path A)
-  initialThinkingMode: boolean
+  // Initial thinking level from Quick Start (Path A)
+  initialThinkingMode: ThinkingLevel
   // Streaming state
   isStreaming: boolean
 
@@ -22,7 +22,7 @@ interface ChatState {
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string
   updateMessage: (id: string, data: Partial<ChatMessage>) => void
   clearMessages: () => void
-  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null, thinkingMode?: boolean) => void
+  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null, thinkingMode?: ThinkingLevel) => void
   clearInitialPrompt: () => void
   setStreaming: (streaming: boolean) => void
 }
@@ -44,7 +44,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   initialPrompt: null,
   initialAttachments: null,
-  initialThinkingMode: false,
+  initialThinkingMode: 'medium',
   isStreaming: false,
 
   loadForProject: async (projectId) => {
@@ -100,9 +100,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  setInitialPrompt: (prompt, attachments, thinkingMode) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null, initialThinkingMode: thinkingMode ?? false }),
+  setInitialPrompt: (prompt, attachments, thinkingMode) => set({ initialPrompt: prompt, initialAttachments: attachments ?? null, initialThinkingMode: thinkingMode ?? 'medium' }),
 
-  clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null, initialThinkingMode: false }),
+  clearInitialPrompt: () => set({ initialPrompt: null, initialAttachments: null, initialThinkingMode: 'medium' }),
 
   setStreaming: (streaming) => {
     set({ isStreaming: streaming })

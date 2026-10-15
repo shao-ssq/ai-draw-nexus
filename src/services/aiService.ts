@@ -1,4 +1,4 @@
-import type { PayloadMessage, ChatRequest } from '@/types'
+import type { PayloadMessage, ChatRequest, EngineType, ThinkingLevel } from '@/types'
 
 // API endpoint - can be configured via environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -52,8 +52,8 @@ export const aiService = {
   /**
    * Send chat messages to AI and get response (non-streaming)
    */
-  async chat(messages: PayloadMessage[]): Promise<string> {
-    const request: ChatRequest = { messages }
+  async chat(messages: PayloadMessage[], engine: EngineType): Promise<string> {
+    const request: ChatRequest = { engine, messages }
 
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
@@ -72,23 +72,32 @@ export const aiService = {
 
   /**
    * Stream chat response with SSE support
-   * @param messages - The messages to send
+   * @param messages - The messages to send (no system message needed; the
+   *                   server injects the engine-specific system prompt)
+   * @param engine - Engine the request targets (used by the server to pick
+   *                 the system prompt and forward it to the AI provider)
    * @param onChunk - Callback for each actual answer chunk
-   * @param thinking - 'enabled' | 'disabled'，控制模型思考开关（默认 disabled）
+   * @param thinking - 思考档位 'off' (默认) | 'medium' | 'high'
    * @param onComplete - Optional callback when streaming completes
    * @param onThinking - Optional callback when thinking state changes
-   * @param onReasoningChunk - Optional callback for each reasoning/thinking chunk (Kimi)
+   * @param onReasoningChunk - Optional callback for each reasoning/thinking chunk (Kimi/Gemini)
    * @returns The full accumulated content
    */
   async streamChat(
     messages: PayloadMessage[],
+    engine: EngineType,
     onChunk: (chunk: string, accumulated: string) => void,
-    thinking: 'enabled' | 'disabled' = 'disabled',
+    thinking: ThinkingLevel = 'medium',
     onComplete?: (content: string) => void,
     onThinking?: (isThinking: boolean) => void,
     onReasoningChunk?: (chunk: string, accumulated: string) => void,
   ): Promise<string> {
-    const request: ChatRequest = { messages, stream: true, thinking } as ChatRequest & { stream: boolean }
+    const request: ChatRequest = {
+      engine,
+      messages,
+      stream: true,
+      thinking,
+    } as ChatRequest & { stream: boolean }
 
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',

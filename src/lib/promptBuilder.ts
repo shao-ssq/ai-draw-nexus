@@ -1,14 +1,4 @@
 import type { EngineType } from '@/types'
-import { mermaidSystemPrompt, drawioSystemPrompt, excalidrawSystemPrompt } from './prompts'
-
-/**
- * System prompts for different engines
- */
-export const SYSTEM_PROMPTS: Record<EngineType, string> = {
-  mermaid: mermaidSystemPrompt,
-  excalidraw: excalidrawSystemPrompt,
-  drawio: drawioSystemPrompt,
-}
 
 /**
  * Build user prompt for initial generation
@@ -16,6 +6,8 @@ export const SYSTEM_PROMPTS: Record<EngineType, string> = {
  * @param useTwoPhase - Whether to use two-phase generation (for drawio/excalidraw) or single-phase (for mermaid)
  * @param phase - Phase of two-phase generation ('elements' or 'links'), ignored if useTwoPhase is false
  * @param elementsOutput - Output from elements phase, required for 'links' phase
+ *
+ * 注意：system prompt 已经由服务端按 engine 注入，这里只构造 user 消息。
  */
 export function buildInitialPrompt(
   userInput: string,

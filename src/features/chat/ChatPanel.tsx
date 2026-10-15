@@ -25,7 +25,8 @@ import {
   SUPPORTED_DOCUMENT_EXTENSIONS,
 } from '@/lib/fileUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import type { Attachment, DocumentAttachment, ChatMessage, EngineType } from '@/types'
+import type { Attachment, DocumentAttachment, ChatMessage, EngineType, ThinkingLevel } from '@/types'
+import { ThinkingLevelSelector } from './ThinkingLevelSelector'
 
 const ENGINE_LABEL: Record<EngineType, string> = {
   mermaid: 'Mermaid Agent',
@@ -189,7 +190,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [thinkingEnabled, setThinkingEnabled] = useState(false)
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
   const [modelInfo, setModelInfo] = useState<{ provider: string; modelId: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevMsgCountRef = useRef(0)
@@ -210,23 +211,21 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       .catch(() => {})
   }, [])
 
-  // 思考开关默认值：仅在 ChatPanel 首次挂载时设置一次（按引擎区分 + 首页 preference），
+  // 思考档位默认值：仅在 ChatPanel 首次挂载时设置一次（按首页 preference 初始化），
   // 之后由用户手动切换，useEffect 不再被依赖变化触发覆盖。
   // 修 bug：旧逻辑 deps 是 [engineType, initialThinkingMode]，engineType 一变就重跑，
-  // 把用户手动关掉的"非思考"又设回"思考"（mermaid 永远强制开）。
+  // 把用户手动改过的档位又设回默认。
   const hasInitializedThinkingRef = useRef(false)
   useEffect(() => {
     if (hasInitializedThinkingRef.current) return
     hasInitializedThinkingRef.current = true
-    // 首页 preference 优先；否则 Mermaid 默认开，其他默认关
+    // 首页 preference 优先；否则按默认 medium
     if (initialThinkingMode) {
-      setThinkingEnabled(true)
-    } else if (engineType === 'mermaid') {
-      setThinkingEnabled(true)
+      setThinkingLevel(initialThinkingMode)
     } else {
-      setThinkingEnabled(false)
+      setThinkingLevel('medium')
     }
-  }, [engineType, initialThinkingMode])
+  }, [initialThinkingMode])
 
   const handleCopy = async (text: string, id: string) => {
     try {
@@ -253,9 +252,9 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (initialPrompt && !hasHandledInitialPrompt.current) {
       hasHandledInitialPrompt.current = true
       const attachmentsToSend = initialAttachments ?? undefined
-      // 从首页进来时，思考模式直接用首页按钮状态（initialThinkingMode），
-      // 不依赖 ChatPanel 的 thinkingEnabled state（闭包内可能还未初始化为正确值）
-      const initialMode: 'enabled' | 'disabled' = initialThinkingMode ? 'enabled' : 'disabled'
+      // 从首页进来时，思考档位直接用首页选择（initialThinkingMode），
+      // 不依赖 ChatPanel 的 thinkingLevel state（闭包内可能还未初始化为正确值）
+      const initialMode: ThinkingLevel = initialThinkingMode
       clearInitialPrompt()
       handleSend(initialPrompt, attachmentsToSend, initialMode)
     }
@@ -304,8 +303,8 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const handleSend = async (
     text?: string,
     initialAtts?: Attachment[],
-    // 从首页 QuickStart 进入时直接传思考模式，避免依赖闭包里未初始化的 thinkingEnabled
-    forceThinkingMode?: 'enabled' | 'disabled',
+    // 从首页 QuickStart 进入时直接传思考档位，避免依赖闭包里未初始化的 thinkingLevel
+    forceThinkingLevel?: ThinkingLevel,
   ) => {
     const message = text || inputValue.trim()
     if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
@@ -313,8 +312,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
-    const effectiveThinking: 'enabled' | 'disabled' =
-      forceThinkingMode ?? (thinkingEnabled ? 'enabled' : 'disabled')
+    const effectiveThinking: ThinkingLevel = forceThinkingLevel ?? thinkingLevel
     await generate(message, isCanvasEmpty, currentAttachments, effectiveThinking)
   }
 
@@ -330,7 +328,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (isStreaming) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
-    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingEnabled ? 'enabled' : 'disabled')
+    await generate(lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingLevel)
   }
 
   return (
@@ -488,20 +486,12 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                title={thinkingEnabled ? '深度思考：已开启（生成更慢但规划更精细）' : '深度思考：已关闭（速度快）'}
-                onClick={() => setThinkingEnabled((v) => !v)}
+              <ThinkingLevelSelector
+                value={thinkingLevel}
+                onChange={setThinkingLevel}
+                variant="compact"
                 disabled={isStreaming}
-                className={`h-8 w-8 rounded-lg border ${
-                  thinkingEnabled
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted hover:text-primary'
-                }`}
-              >
-                <Brain className="h-4 w-4" />
-              </Button>
+              />
               <Button
                 onClick={() => handleSend()}
                 disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}

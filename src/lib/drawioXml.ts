@@ -1,5 +1,5 @@
 // src/lib/drawioXml.ts
-// AI emits bare <mxCell> fragments (see src/lib/prompts/drawio.ts).
+// AI emits bare <mxCell> fragments (see server/_shared/systemPrompts.ts).
 // drawio's Editor.setFileData / extractGraphModel accepts either a wrapped
 // <mxfile> or the inner <mxGraphModel>; we wrap fragments into a single-page
 // <mxfile><diagram><mxGraphModel><root>...</root></mxGraphModel></diagram></mxfile>

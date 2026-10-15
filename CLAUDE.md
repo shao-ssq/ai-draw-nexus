@@ -86,6 +86,9 @@ AI_API_KEY=your-api-key
 AI_BASE_URL=https://api.anthropic.com
 AI_PROVIDER=anthropic
 AI_MODEL_ID=claude-sonnet-5
+# Gemini 原生协议根地址（Gemini 模型的思考内容只走原生协议才回传；
+# 如中转站 https://api.openai-proxy.org/google。不填则按 AI_BASE_URL 推导）
+AI_GEMINI_BASE_URL=
 PORT=8787
 ```
 
