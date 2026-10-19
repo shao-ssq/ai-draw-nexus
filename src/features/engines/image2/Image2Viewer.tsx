@@ -1,13 +1,10 @@
-import { useState, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useCallback, useImperativeHandle, forwardRef } from 'react'
 import { ImageOff } from 'lucide-react'
 
 export interface Image2ViewerRef {
   exportAsSvg: () => void
   exportAsPng: () => void  // 保留兼容名，内部按 JPG 导出（EditorPage 走 canvasRef.current.exportAsPng）
   exportAsSource: () => void
-  showSourceCode: () => void
-  hideSourceCode: () => void
-  toggleSourceCode: () => void
   getThumbnail: () => Promise<string>
 }
 
@@ -24,8 +21,6 @@ interface Image2ViewerProps {
  */
 export const Image2Viewer = forwardRef<Image2ViewerRef, Image2ViewerProps>(
   function Image2Viewer({ code }, ref) {
-    const [showSource, setShowSource] = useState(false)
-
     // 把 Blob 触发成下载
     const downloadBlob = useCallback((blob: Blob, filename: string) => {
       const url = URL.createObjectURL(blob)
@@ -87,9 +82,6 @@ export const Image2Viewer = forwardRef<Image2ViewerRef, Image2ViewerProps>(
       exportAsSvg,
       exportAsPng,
       exportAsSource,
-      showSourceCode: () => setShowSource(true),
-      hideSourceCode: () => setShowSource(false),
-      toggleSourceCode: () => setShowSource((v) => !v),
       getThumbnail: async () => code,
     }), [code, exportAsSvg, exportAsPng, exportAsSource])
 
@@ -107,17 +99,11 @@ export const Image2Viewer = forwardRef<Image2ViewerRef, Image2ViewerProps>(
 
     return (
       <div className="flex h-full w-full items-center justify-center overflow-auto p-4 bg-background">
-        {showSource ? (
-          <pre className="max-h-full w-full overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-surface p-3 text-xs text-muted">
-            {code}
-          </pre>
-        ) : (
-          <img
-            src={code}
-            alt="Image2 生成结果"
-            className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
-          />
-        )}
+        <img
+          src={code}
+          alt="Image2 生成结果"
+          className="max-h-full max-w-full rounded-lg object-contain shadow-sm"
+        />
       </div>
     )
   },

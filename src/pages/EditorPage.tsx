@@ -333,18 +333,22 @@ export function EditorPage() {
             </DropdownMenu>
           )}
 
-          {/* Source Code button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => canvasRef.current?.toggleSourceCode()}
-            className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5"
-          >
-            <Code className="h-3.5 w-3.5" />
-            <span className="text-[11px]">源码</span>
-          </Button>
+          {/* Source Code button —— image2 没有可编辑源码，仅 mermaid/excalidraw/drawio 显示 */}
+          {currentProject.engineType !== 'image2' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => canvasRef.current?.toggleSourceCode()}
+                className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5"
+              >
+                <Code className="h-3.5 w-3.5" />
+                <span className="text-[11px]">源码</span>
+              </Button>
 
-          <div className="mx-1 h-4 w-px bg-border" />
+              <div className="mx-1 h-4 w-px bg-border" />
+            </>
+          )}
 
           <Button
             variant={hasUnsavedChanges ? "default" : "ghost"}

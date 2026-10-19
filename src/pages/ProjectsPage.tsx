@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { clearDrawioModifiedBeforeUnload } from '@/lib/drawioLifecycle'
 import { Plus, Trash2, Sparkles, Pencil } from 'lucide-react'
 import {
   Button,
@@ -150,7 +151,17 @@ export function ProjectsPage() {
                   <div
                     key={project.id}
                     className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
-                    onClick={() => navigate(`/editor/${project.id}`)}
+                    onClick={() => {
+                      // DRAWIO 的 EditorUi 是跨项目复用的全局单例，软导航切换项目时
+                      // 旧 state 残留导致画布灰空。强制整页 reload 让 EditorUi 从零初始化。
+                      if (project.engineType === 'drawio') {
+                        // 清掉 drawio 的 modified 状态，否则它的 beforeunload 监听器会弹"Changes..."对话框
+                        clearDrawioModifiedBeforeUnload()
+                        window.location.assign(`/editor/${project.id}`)
+                      } else {
+                        navigate(`/editor/${project.id}`)
+                      }
+                    }}
                   >
                     {/* Action Buttons - 右上角 */}
                     <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">

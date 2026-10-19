@@ -107,9 +107,6 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.showSourceCode()
           break
-        case 'image2':
-          image2Ref.current?.showSourceCode()
-          break
       }
     },
     hideSourceCode: () => {
@@ -123,9 +120,6 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.hideSourceCode()
           break
-        case 'image2':
-          image2Ref.current?.hideSourceCode()
-          break
       }
     },
     toggleSourceCode: () => {
@@ -138,9 +132,6 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.toggleSourceCode()
-          break
-        case 'image2':
-          image2Ref.current?.toggleSourceCode()
           break
       }
     },

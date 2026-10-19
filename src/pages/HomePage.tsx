@@ -10,6 +10,7 @@ import { useChatStore } from '@/stores/chatStore'
 import { useTypewriter } from '@/hooks/useTypewriter'
 import { parseDocument, readFileAsDataUrl, SUPPORTED_IMAGE_EXTENSIONS, MAX_DOCUMENT_COUNT, MAX_IMAGE_COUNT, validateImageFile } from '@/lib/fileUtils'
 import { useToast } from '@/hooks/useToast'
+import { clearDrawioModifiedBeforeUnload } from '@/lib/drawioLifecycle'
 import { ThinkingLevelSelector } from '@/features/chat/ThinkingLevelSelector'
 import { Image2ParamsBar } from '@/features/chat/Image2ParamsBar'
 import { DEFAULT_IMAGE2_PARAMS } from '@/types'
@@ -78,7 +79,18 @@ export function HomePage() {
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
       setInitialPrompt(prompt.trim(), allAttachments, thinkingLevel, image2Params)
-      navigate(`/editor/${project.id}`)
+
+      // DRAWIO 的 EditorUi 是跨项目复用的全局单例，切到新项目时软切换（resetCanvas + setFileData）
+      // 不能完全清理旧状态 —— 第二个 DRAWIO 项目画布灰空就是这个问题。强制整页 reload
+      // 让 EditorUi 从零初始化，简单可靠。其他引擎（mermaid/excalidraw/image2）走 navigate
+      // 即可。
+      if (selectedEngine === 'drawio') {
+        // 清掉 drawio 的 modified 状态，否则它的 beforeunload 监听器会弹"Changes..."对话框
+        clearDrawioModifiedBeforeUnload()
+        window.location.assign(`/editor/${project.id}`)
+      } else {
+        navigate(`/editor/${project.id}`)
+      }
     } catch (error) {
       console.error('Failed to create project:', error)
     } finally {

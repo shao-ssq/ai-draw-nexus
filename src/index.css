@@ -32,6 +32,7 @@
   --color-secondary: var(--color-deep-gray);
   --color-background: var(--color-background-cool);
   --color-surface: var(--color-pure-white);
+  --color-foreground: var(--color-deep-gray);
   --color-border: var(--color-border-light);
   --color-muted: var(--color-text-muted);
   --color-accent: var(--color-accent-orange);

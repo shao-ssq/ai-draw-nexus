@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/Tooltip'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
-import { ensureMxfileWrapped } from '@/lib/drawioXml'
+import { ensureMxfileWrapped, wrapToMxfile } from '@/lib/drawioXml'
 
 export interface DrawioEditorRef {
   load: (xml: string) => void
@@ -881,9 +881,19 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       if (!isReady || !ui) return
 
       // 新项目（无历史版本）data 为空：EditorUi 是跨项目复用的单例，
-      // 必须显式重置画布，否则旧项目的内容会残留显示在新画板上
+      // 必须显式重置画布，否则旧项目的内容会残留显示在新画板上。
+      // 慢路径下 EditorUi 首次就绪时 `initializeCanvas` 还没跑过，resetCanvas 之后
+      // 还需要一个最小 mxfile wrapper 让 drawio 渲染出可用的 graph 容器（光有 layer
+      // 没有 root 的 cell tree 结构，drawio 会显示灰色空白画板）。
+      // 不能走 ensureMxfileWrapped('')：那个函数对空串早 return，画布仍是空的。
+      // 直接 wrap 一个空 inner 拿到最小但合法的 wrapper。
       if (!data) {
         resetCanvas(ui)
+        try {
+          ui.setFileData(wrapToMxfile(''))
+        } catch (e) {
+          console.error('[DrawioEditor] setFileData (empty) failed', e)
+        }
         // 强制 view 刷新（fast path 没调 initializeCanvas，view 缓存可能 stale）
         const refreshView = () => {
           try {
