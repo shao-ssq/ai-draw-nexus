@@ -3,8 +3,8 @@
 ### 1. 克隆项目并安装依赖
 
 ```bash
-git clone https://github.com/your-name/WeDraw
-cd WeDraw
+git clone https://github.com/your-name/机灵鬼儿
+cd 机灵鬼儿
 pnpm install
 ```
 
@@ -15,7 +15,6 @@ pnpm install
 ```env
 AI_API_KEY=your-api-key
 AI_BASE_URL=https://api.anthropic.com
-AI_PROVIDER=anthropic
 AI_MODEL_ID=claude-sonnet-5
 PORT=8787
 ```
@@ -60,11 +59,11 @@ PORT=8787 node dist-server/index.js
 
 ### 支持的 AI 服务
 
-| 服务商       | AI_PROVIDER        | AI_BASE_URL               | 推荐模型              |
-|-----------|--------------------|---------------------------|-------------------|
-| OpenAI    | openai             | https://api.openai.com/v1 | gpt-5             |
-| Anthropic | anthropic          | https://api.anthropic.com | claude-sonnet-4-5 |
-| 其他兼容服务    | openai / anthropic | 自定义 URL                   | -                 |
+| 服务商       | AI_BASE_URL               | 推荐模型              |
+|-----------|---------------------------|-------------------|
+| OpenAI    | https://api.openai.com/v1 | gpt-5             |
+| Anthropic | https://api.anthropic.com | claude-sonnet-4-5 |
+| 其他兼容服务    | 自定义 URL                   | -                 |
 
 ## 技术栈
 

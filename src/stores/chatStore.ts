@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { ChatMessage, Attachment, ThinkingLevel } from '@/types'
+import type { ChatMessage, Attachment, ThinkingLevel, Image2Params } from '@/types'
 import { ChatRepository } from '@/services/chatRepository'
 
 interface ChatState {
@@ -16,6 +16,8 @@ interface ChatState {
   initialPrompt: string | null
   initialAttachments: Attachment[] | null
   initialThinkingMode: ThinkingLevel
+  /** HomePage → ChatPanel 一次性信号：image2 引擎的生成参数 */
+  initialImage2Params: Image2Params | null
 
   // Actions
   loadForProject: (projectId: string) => Promise<void>
@@ -27,7 +29,12 @@ interface ChatState {
   setStreaming: (projectId: string, streaming: boolean) => void
   abortStream: (projectId: string) => void
   abortAllStreams: () => void
-  setInitialPrompt: (prompt: string | null, attachments?: Attachment[] | null, thinkingMode?: ThinkingLevel) => void
+  setInitialPrompt: (
+    prompt: string | null,
+    attachments?: Attachment[] | null,
+    thinkingMode?: ThinkingLevel,
+    image2Params?: Image2Params | null,
+  ) => void
   clearInitialPrompt: () => void
 }
 
@@ -64,6 +71,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   initialPrompt: null,
   initialAttachments: null,
   initialThinkingMode: 'medium',
+  initialImage2Params: null,
 
   loadForProject: async (projectId) => {
     // 切视图：更新当前活跃项目
@@ -178,15 +186,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ abortControllersByProject: {} })
   },
 
-  setInitialPrompt: (prompt, attachments, thinkingMode) =>
+  setInitialPrompt: (prompt, attachments, thinkingMode, image2Params) =>
     set({
       initialPrompt: prompt,
       initialAttachments: attachments ?? null,
       initialThinkingMode: thinkingMode ?? 'medium',
+      initialImage2Params: image2Params ?? null,
     }),
 
   clearInitialPrompt: () =>
-    set({ initialPrompt: null, initialAttachments: null, initialThinkingMode: 'medium' }),
+    set({
+      initialPrompt: null,
+      initialAttachments: null,
+      initialThinkingMode: 'medium',
+      initialImage2Params: null,
+    }),
 }))
 
 // 供测试或其他地方调用的 controller 注册 helper

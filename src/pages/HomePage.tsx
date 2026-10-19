@@ -1,15 +1,23 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Send } from 'lucide-react'
+import { FileText, Send, Image as ImageIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
 import { ENGINES, QUICK_ACTIONS } from '@/constants'
-import type { EngineType, Attachment, DocumentAttachment, ThinkingLevel } from '@/types'
+import type { EngineType, Attachment, DocumentAttachment, ImageAttachment, ThinkingLevel, Image2Params } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
 import { useTypewriter } from '@/hooks/useTypewriter'
-import { parseDocument } from '@/lib/fileUtils'
+import { parseDocument, readFileAsDataUrl, SUPPORTED_IMAGE_EXTENSIONS, MAX_DOCUMENT_COUNT, MAX_IMAGE_COUNT, validateImageFile } from '@/lib/fileUtils'
+import { useToast } from '@/hooks/useToast'
 import { ThinkingLevelSelector } from '@/features/chat/ThinkingLevelSelector'
+import { Image2ParamsBar } from '@/features/chat/Image2ParamsBar'
+import { DEFAULT_IMAGE2_PARAMS } from '@/types'
+
+// 判断 File 是否为图片（用于在提交阶段分派到不同处理路径）
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(file.name)
+}
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -18,9 +26,12 @@ export function HomePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
+  const [image2Params, setImage2Params] = useState<Image2Params>(DEFAULT_IMAGE2_PARAMS)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setInitialPrompt = useChatStore((state) => state.setInitialPrompt)
+  const { error: showError } = useToast()
 
   // 输入框打字机演示：作为背景文字循环播放示例 prompt（不写入真实 prompt）
   const [typedDemo, setTypedDemo] = useState('')
@@ -44,18 +55,29 @@ export function HomePage() {
       const convertedAttachments: Attachment[] = []
 
       for (const file of attachments) {
-        const content = await parseDocument(file)
-        const docAtt: DocumentAttachment = {
-          type: 'document',
-          content,
-          fileName: file.name,
+        if (isImageFile(file)) {
+          const dataUrl = await readFileAsDataUrl(file)
+          const imgAtt: ImageAttachment = {
+            type: 'image',
+            dataUrl,
+            fileName: file.name,
+            mimeType: file.type || 'image/png',
+          }
+          convertedAttachments.push(imgAtt)
+        } else {
+          const content = await parseDocument(file)
+          const docAtt: DocumentAttachment = {
+            type: 'document',
+            content,
+            fileName: file.name,
+          }
+          convertedAttachments.push(docAtt)
         }
-        convertedAttachments.push(docAtt)
       }
 
       // 传递 prompt 和附件
       const allAttachments = convertedAttachments.length > 0 ? convertedAttachments : null
-      setInitialPrompt(prompt.trim(), allAttachments, thinkingLevel)
+      setInitialPrompt(prompt.trim(), allAttachments, thinkingLevel, image2Params)
       navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
@@ -79,9 +101,60 @@ export function HomePage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (files) {
-      setAttachments(prev => [...prev, ...Array.from(files)])
+    if (!files || files.length === 0) return
+    const newFiles = Array.from(files)
+
+    // 副作用（toast）必须放在 setState 外面 —— React 18 StrictMode
+    // 会双调用 setState 的 updater 回调，把副作用也双触发。
+    const currentDocCount = attachments.filter(f => !isImageFile(f)).length
+    const available = MAX_DOCUMENT_COUNT - currentDocCount
+
+    if (available <= 0) {
+      showError(`文档最多上传 ${MAX_DOCUMENT_COUNT} 个（单个 ≤1MB）`)
+      return
     }
+    if (newFiles.length > available) {
+      showError(`只能再上传 ${available} 个文档，共 ${MAX_DOCUMENT_COUNT} 个上限`)
+      setAttachments(prev => [...prev, ...newFiles.slice(0, available)])
+      return
+    }
+    setAttachments(prev => [...prev, ...newFiles])
+  }
+
+  const handleImageAttachmentClick = () => {
+    // 直接触发文件选择；"替换旧图"的过滤逻辑放在 onChange 里，
+    // 避免 setAttachments 与 click() 之间的竞态。
+    imageInputRef.current?.click()
+  }
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const newFiles = Array.from(files)
+
+    // 限制最多 1 张，超额提示并截断
+    if (newFiles.length > MAX_IMAGE_COUNT) {
+      showError(`图片最多上传 ${MAX_IMAGE_COUNT} 张，已取第一张`)
+    }
+    const filesToAdd = newFiles.slice(0, MAX_IMAGE_COUNT)
+
+    // 校验（1MB / 格式）
+    for (const file of filesToAdd) {
+      const validation = validateImageFile(file)
+      if (!validation.valid) {
+        showError(validation.error!)
+        return
+      }
+    }
+
+    // 必须先把 FileList 拍成数组快照，因为下面 e.target.value = ''
+    // 会立刻清空 FileList，导致 setAttachments 回调里 Array.from 拿到空。
+    setAttachments(prev => [
+      ...prev.filter(f => !isImageFile(f)), // 清掉旧图片，保留文档
+      ...filesToAdd,
+    ])
+    // 重置 input.value，允许同一文件再次选择
+    e.target.value = ''
   }
 
   const removeAttachment = (index: number) => {
@@ -130,7 +203,7 @@ export function HomePage() {
                 <Sparkles className="h-6 w-6 text-surface" />
               </div> */}
               <h1 className="text-3xl font-bold text-primary">
-                  一句话生成可编辑的专业图表
+                  想到就能画到 —— 机灵鬼<span className="text-xl">儿</span>
               </h1>
             </div>
             <p className="text-muted"></p>
@@ -139,26 +212,44 @@ export function HomePage() {
           {/* Chat Input Box */}
           <div className="mb-6 w-full max-w-[860px]">
             <div className="flex flex-col gap-4 rounded-3xl border border-border bg-surface px-6 pb-4 pt-5 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.05),0_4px_12px_-2px_rgba(0,0,0,0.02)] transition-[box-shadow,border-color] focus-within:border-[rgba(156,163,175,0.5)] focus-within:shadow-[0_12px_36px_-5px_rgba(0,0,0,0.08)]">
-              {/* 附件预览区域 */}
+              {/* 附件预览区域 - 输入框顶部：缩略图 / 文件名 / 移除按钮 */}
               {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {attachments.map((file, index) => (
-                    <div
-                      key={`file-${index}`}
-                      className="flex items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-sm"
-                    >
-                      <FileText className="h-3 w-3 text-muted" />
-                      <span className="max-w-[150px] truncate text-primary">
-                        {file.name}
-                      </span>
-                      <button
-                        onClick={() => removeAttachment(index)}
-                        className="text-muted hover:text-primary"
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {attachments.map((file, index) => {
+                    const image = isImageFile(file)
+                    const previewUrl = image ? URL.createObjectURL(file) : null
+                    return (
+                      <div
+                        key={`file-${index}`}
+                        className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-1.5"
                       >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                        {/* 左侧：缩略图（图片）或文档图标 */}
+                        {image && previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt={file.name}
+                            className="h-9 w-9 flex-shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-primary/5">
+                            <FileText className="h-4 w-4 text-muted" />
+                          </div>
+                        )}
+                        {/* 中间：文件名 */}
+                        <span className="flex-1 min-w-0 truncate text-sm text-primary">
+                          {file.name}
+                        </span>
+                        {/* 右侧：移除按钮 */}
+                        <button
+                          onClick={() => removeAttachment(index)}
+                          title="移除附件"
+                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-surface hover:text-primary"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -172,7 +263,7 @@ export function HomePage() {
                 )}
                 <textarea
                   ref={textareaRef}
-                  placeholder={isTyping ? '' : '描述你想要绘制的图表，WeDraw 会帮你完成...'}
+                  placeholder={isTyping ? '' : '描述你想要绘制的图表，机灵鬼儿 会帮你完成...'}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onFocus={() => {
@@ -194,6 +285,22 @@ export function HomePage() {
                 className="hidden"
                 accept=".docx,.txt,.md"
               />
+              <input
+                ref={imageInputRef}
+                type="file"
+                multiple
+                onChange={handleImageFileChange}
+                className="hidden"
+                accept={SUPPORTED_IMAGE_EXTENSIONS.join(',')}
+              />
+
+              {/* Image2 生成参数：仅当选中 image2 引擎时显示 */}
+              {selectedEngine === 'image2' && (
+                <Image2ParamsBar
+                  value={image2Params}
+                  onChange={setImage2Params}
+                />
+              )}
 
               {/* 底部工具栏 */}
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -204,11 +311,13 @@ export function HomePage() {
                       mermaid: 'bg-indigo-500',
                       excalidraw: 'bg-orange-500',
                       drawio: 'bg-emerald-500',
+                      image2: 'bg-sky-500',
                     }
                     const descriptions: Record<string, string> = {
                       mermaid: '适合流程、时序、ER 等结构化图；文本语法清晰，便于版本管理和后续手工修改。',
                       excalidraw: '适合方案草图、白板讨论和产品构思；手绘感更自然，表达关系比追求精确排版更重要。',
                       drawio: '适合架构、拓扑、UML 和交付级技术图；图元库丰富，适合复杂系统和规范化排版。',
+                      image2: '文字描述直接生成高保真图像；适合插画、海报、产品图、概念图等非结构化视觉素材。',
                     }
                     const active = selectedEngine === engine.value
                     return (
@@ -236,13 +345,22 @@ export function HomePage() {
 
                 {/* 右侧：操作按钮组 */}
                 <div className="flex items-center gap-2">
-                  {/* 上传附件 */}
+                  {/* 上传文档（最多 5 个，单个 ≤1MB） */}
                   <button
                     onClick={handleAttachmentClick}
                     className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-primary"
-                    title="可上传文档一键转化为图表，或上传截图复刻图表"
+                    title="上传文档（最多 5 个，单个 ≤1MB）"
                   >
                     <FileText className="h-4 w-4" />
+                  </button>
+
+                  {/* 上传图片（最多 1 张，单个 ≤1MB，再次点击替换） */}
+                  <button
+                    onClick={handleImageAttachmentClick}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-primary"
+                    title="上传图片（最多 1 张，单个 ≤1MB，再次点击替换）"
+                  >
+                    <ImageIcon className="h-4 w-4" />
                   </button>
 
                   {/* 思考档位选择器（关 / 低 / 中 / 高） */}

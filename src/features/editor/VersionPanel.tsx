@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { RotateCcw, Clock, PanelRightClose } from 'lucide-react'
+import { RotateCcw, Clock } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import {
   useEditorStore,
@@ -8,11 +8,7 @@ import {
 import { VersionRepository } from '@/services/versionRepository'
 import type { VersionHistory } from '@/types'
 
-interface VersionPanelProps {
-  onCollapse?: () => void
-}
-
-export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
+export function VersionPanel() {
   const [versions, setVersions] = useState<VersionHistory[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -48,9 +44,9 @@ export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
   }
 
   const formatTime = (date: Date) => {
-    return new Date(date).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    return new Date(date).toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     })
@@ -65,15 +61,6 @@ export function VersionPanel({ onCollapse }: VersionPanelProps = {}) {
         </div>
         <div className="flex items-center gap-2">
           <p className="text-xs text-muted">{versions.length} 个版本</p>
-          <Button
-            variant="ghost"
-            size="icon"
-            title="收起版本历史"
-            onClick={onCollapse}
-            className="rounded-lg border border-[#e5e7eb]"
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 

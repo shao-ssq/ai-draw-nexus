@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   Sparkles,
   Brain,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { Button, Loading } from '@/components/ui'
 import {
@@ -28,18 +29,26 @@ import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
 import {
   validateDocumentFile,
+  validateImageFile,
   parseDocument,
+  readFileAsDataUrl,
   selectFiles,
   SUPPORTED_DOCUMENT_EXTENSIONS,
+  SUPPORTED_IMAGE_EXTENSIONS,
+  MAX_DOCUMENT_COUNT,
+  MAX_IMAGE_COUNT,
 } from '@/lib/fileUtils'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import type { Attachment, DocumentAttachment, ChatMessage, EngineType, ThinkingLevel } from '@/types'
+import type { Attachment, DocumentAttachment, ImageAttachment, ChatMessage, EngineType, ThinkingLevel, Image2Params } from '@/types'
 import { ThinkingLevelSelector } from './ThinkingLevelSelector'
+import { Image2ParamsBar } from './Image2ParamsBar'
+import { DEFAULT_IMAGE2_PARAMS } from '@/types'
 
 const ENGINE_LABEL: Record<EngineType, string> = {
   mermaid: 'Mermaid Agent',
   excalidraw: 'Excalidraw Agent',
   drawio: 'DrawIO Agent',
+  image2: 'Image2 Agent',
 }
 
 interface ChatPanelProps {
@@ -84,7 +93,7 @@ function AssistantMessageCard({
 }: {
   msg: ChatMessage
   onRegenerate: () => void
-  modelInfo?: { provider: string; modelId: string } | null
+  modelInfo?: { modelId: string } | null
 }) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
   const reasoningScrollRef = useRef<HTMLDivElement>(null)
@@ -99,12 +108,24 @@ function AssistantMessageCard({
   const isThinking = msg.phaseLabel === '思考中...'
   const modelTag = msg.engineType ? ENGINE_LABEL[msg.engineType] : 'AI Agent'
   const showRegenerate = !isStreaming && !!msg.content && msg.status !== 'error'
-  const modelName = modelInfo?.modelId ? ` · ${modelInfo.modelId}` : ''
+  // image2 走"设计师 LLM → gpt-image-2"两步链路，modelInfo.modelId 是中间那个设计师 LLM
+  // （gemini-3.8-flash 之类），不是真正"出图"的模型，挂上去会误导用户。
+  // 等后端 /api/model-info 支持按引擎返回时再补真正的图像模型名。
+  const modelName =
+    msg.engineType === 'image2'
+      ? ''
+      : modelInfo?.modelId
+        ? ` · ${modelInfo.modelId}`
+        : ''
 
   // 思考时强制展开；思考一结束立即折叠（清掉用户在思考中点击 header 留下的"展开"状态）
   const reasoningOpen = msg.reasoningContent
     ? (isThinking || reasoningExpanded)
     : false
+
+  // image2：设计师 LLM 输出的图像 prompt（content 字段）走折叠框，默认收起
+  const [promptExpanded, setPromptExpanded] = useState(false)
+  const isImage2 = msg.engineType === 'image2'
 
   // 思考结束的瞬间：清空展开偏好，确保 box 自动折叠（不被之前的点击残留）
   useEffect(() => {
@@ -172,9 +193,35 @@ function AssistantMessageCard({
         </div>
       )}
 
-      {/* 正文内容区 */}
+      {/* 正文内容区 —— image2 的折叠 prompt 框在这里 */}
       <div className="ai-msg-body">
-        {msg.content ? (
+        {isImage2 ? (
+          // image2 的 content 是设计师 LLM 设计的图像 prompt，折叠展示
+          msg.content ? (
+            <div className="ai-reasoning-box">
+              <button
+                className="ai-reasoning-header"
+                onClick={() => setPromptExpanded((v) => !v)}
+                type="button"
+              >
+                <Brain className="h-3 w-3 flex-shrink-0" />
+                <span className="text-xs font-medium">图片描述</span>
+                <span className="ai-reasoning-toggle">
+                  {promptExpanded ? '▲' : '▼'}
+                </span>
+              </button>
+              {promptExpanded && (
+                <div className="ai-reasoning-content">
+                  <pre className="whitespace-pre-wrap break-words text-xs text-muted-foreground leading-relaxed">
+                    {msg.content}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ) : isStreaming ? (
+            <p className="ai-placeholder">正在生成回复…</p>
+          ) : null
+        ) : msg.content ? (
           <MarkdownRenderer
             content={msg.content}
             engineType={msg.engineType}
@@ -189,6 +236,32 @@ function AssistantMessageCard({
           <span className="stream-caret" aria-hidden />
         )}
       </div>
+
+      {/* image2 专属：生成的图片放在"图片描述"折叠框下面，作为主视觉 */}
+      {isImage2 && msg.attachments?.some((a) => a.type === 'image') && (
+        <div className="mt-3 space-y-2">
+          {msg.attachments
+            .filter((a): a is ImageAttachment => a.type === 'image')
+            .map((att, idx) => (
+              <a
+                key={idx}
+                href={att.dataUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block overflow-hidden rounded-lg border border-border bg-background"
+              >
+                <img
+                  src={att.dataUrl}
+                  alt={att.fileName}
+                  className="block max-h-[480px] w-full object-contain"
+                />
+                <div className="border-t border-border bg-surface px-3 py-1.5 text-xs text-muted">
+                  {att.fileName}
+                </div>
+              </a>
+            ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -199,7 +272,8 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
-  const [modelInfo, setModelInfo] = useState<{ provider: string; modelId: string } | null>(null)
+  const [image2Params, setImage2Params] = useState<Image2Params>(DEFAULT_IMAGE2_PARAMS)
+  const [modelInfo, setModelInfo] = useState<{ modelId: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const prevMsgCountRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -212,6 +286,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const initialPrompt = useChatStore((s) => s.initialPrompt)
   const initialAttachments = useChatStore((s) => s.initialAttachments)
   const initialThinkingMode = useChatStore((s) => s.initialThinkingMode)
+  const initialImage2Params = useChatStore((s) => s.initialImage2Params)
   const clearInitialPrompt = useChatStore((s) => s.clearInitialPrompt)
   const clearMessages = useChatStore((s) => s.clearMessages)
   const abortStream = useChatStore((s) => s.abortStream)
@@ -221,13 +296,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const { generate } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
 
-  // 加载当前模型信息
+  // 加载当前模型信息 —— 按 engine 区分：image2 走自己的图像模型，
+  // text engines 走主 LLM（gemini/claude）
   useEffect(() => {
-    fetch('/api/model-info')
+    const engineQuery = engineType ? `?engine=${engineType}` : ''
+    fetch(`/api/model-info${engineQuery}`)
       .then((r) => r.json())
       .then((data) => setModelInfo(data))
       .catch(() => {})
-  }, [])
+  }, [engineType])
 
   // 思考档位默认值：仅在 ChatPanel 首次挂载时设置一次（按首页 preference 初始化），
   // 之后由用户手动切换，useEffect 不再被依赖变化触发覆盖。
@@ -273,10 +350,12 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       // 从首页进来时，思考档位直接用首页选择（initialThinkingMode），
       // 不依赖 ChatPanel 的 thinkingLevel state（闭包内可能还未初始化为正确值）
       const initialMode: ThinkingLevel = initialThinkingMode
+      // image2 参数同步首页设置
+      const initialParams = initialImage2Params ?? image2Params
       clearInitialPrompt()
-      handleSend(initialPrompt, attachmentsToSend, initialMode)
+      handleSend(initialPrompt, attachmentsToSend, initialMode, initialParams)
     }
-  }, [initialPrompt, initialAttachments, initialThinkingMode, currentProjectId])
+  }, [initialPrompt, initialAttachments, initialThinkingMode, initialImage2Params, currentProjectId])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -287,27 +366,85 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   }, [inputValue])
 
   const handleDocumentUpload = async () => {
-    const files = await selectFiles(SUPPORTED_DOCUMENT_EXTENSIONS.join(','))
+    const files = await selectFiles(SUPPORTED_DOCUMENT_EXTENSIONS.join(','), true)
     if (!files || files.length === 0) return
+
+    // 先按"文档最多 5 个"截断，剩下走校验+解析
+    const currentDocCount = attachments.filter(att => att.type === 'document').length
+    const available = MAX_DOCUMENT_COUNT - currentDocCount
+    if (available <= 0) {
+      showError(`文档最多上传 ${MAX_DOCUMENT_COUNT} 个（单个 ≤1MB）`)
+      return
+    }
+    const fileArr = Array.from(files)
+    if (fileArr.length > available) {
+      showError(`只能再上传 ${available} 个文档，共 ${MAX_DOCUMENT_COUNT} 个上限`)
+    }
+    const filesToProcess = fileArr.slice(0, available)
 
     setIsProcessingFile(true)
     try {
-      const file = files[0]
-      const validation = validateDocumentFile(file)
-      if (!validation.valid) {
-        showError(validation.error!)
-        return
+      const newAttachments: DocumentAttachment[] = []
+      for (const file of filesToProcess) {
+        const validation = validateDocumentFile(file)
+        if (!validation.valid) {
+          showError(validation.error!)
+          continue
+        }
+        const content = await parseDocument(file)
+        newAttachments.push({
+          type: 'document',
+          content,
+          fileName: file.name,
+        })
       }
-
-      const content = await parseDocument(file)
-      const docAttachment: DocumentAttachment = {
-        type: 'document',
-        content,
-        fileName: file.name,
+      if (newAttachments.length > 0) {
+        setAttachments((prev) => [...prev, ...newAttachments])
       }
-      setAttachments((prev) => [...prev, docAttachment])
     } catch (err) {
       showError('文档处理失败')
+      console.error(err)
+    } finally {
+      setIsProcessingFile(false)
+    }
+  }
+
+  const handleImageUpload = async () => {
+    // 清空已有图片，保留文档附件（再次点击即替换）
+    setAttachments(prev => prev.filter(att => att.type !== 'image'))
+
+    const files = await selectFiles(SUPPORTED_IMAGE_EXTENSIONS.join(','), true)
+    if (!files || files.length === 0) return
+
+    const fileArr = Array.from(files)
+    // 限制最多 1 张
+    if (fileArr.length > MAX_IMAGE_COUNT) {
+      showError(`图片最多上传 ${MAX_IMAGE_COUNT} 张，已取第一张`)
+    }
+    const filesToProcess = fileArr.slice(0, MAX_IMAGE_COUNT)
+
+    setIsProcessingFile(true)
+    try {
+      const newAttachments: ImageAttachment[] = []
+      for (const file of filesToProcess) {
+        const validation = validateImageFile(file)
+        if (!validation.valid) {
+          showError(validation.error!)
+          continue
+        }
+        const dataUrl = await readFileAsDataUrl(file)
+        newAttachments.push({
+          type: 'image',
+          dataUrl,
+          fileName: file.name,
+          mimeType: file.type || 'image/png',
+        })
+      }
+      if (newAttachments.length > 0) {
+        setAttachments((prev) => [...prev, ...newAttachments])
+      }
+    } catch (err) {
+      showError('图片处理失败')
       console.error(err)
     } finally {
       setIsProcessingFile(false)
@@ -323,6 +460,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     initialAtts?: Attachment[],
     // 从首页 QuickStart 进入时直接传思考档位，避免依赖闭包里未初始化的 thinkingLevel
     forceThinkingLevel?: ThinkingLevel,
+    forceImage2Params?: Image2Params | null,
   ) => {
     if (!currentProjectId) return
     const message = text || inputValue.trim()
@@ -332,7 +470,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     setInputValue('')
     setAttachments([])
     const effectiveThinking: ThinkingLevel = forceThinkingLevel ?? thinkingLevel
-    await generate(currentProjectId, message, isCanvasEmpty, currentAttachments, effectiveThinking)
+    const effectiveParams: Image2Params | null = forceImage2Params ?? image2Params
+    await generate(
+      currentProjectId,
+      message,
+      isCanvasEmpty,
+      currentAttachments,
+      effectiveThinking,
+      effectiveParams,
+    )
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -347,7 +493,14 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (isStreaming || !currentProjectId) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
-    await generate(currentProjectId, lastUserMsg.content, isCanvasEmpty, lastUserMsg.attachments, thinkingLevel)
+    await generate(
+      currentProjectId,
+      lastUserMsg.content,
+      isCanvasEmpty,
+      lastUserMsg.attachments,
+      thinkingLevel,
+      image2Params,
+    )
   }
 
   return (
@@ -355,9 +508,12 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="WeDraw" className="h-8 w-8 rounded-lg object-contain" />
+          <img src="/logo.png" alt="机灵鬼儿" className="h-8 w-8 rounded-lg object-contain" />
           <h2 className="font-medium text-primary">助手</h2>
-          {modelInfo?.modelId && (
+          {/* image2 项目下 modelInfo.modelId 是中间层设计师 LLM（gemini-3.8-flash 等），
+              不是真正出图的 gpt-image-2，展示出来会误导用户。这里隐藏，等后端
+              /api/model-info 支持按引擎返回再补。 */}
+          {modelInfo?.modelId && engineType !== 'image2' && (
             <span className="text-xs text-muted font-normal">{modelInfo.modelId}</span>
           )}
         </div>
@@ -413,7 +569,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                         {msg.attachments.map((att, idx) => (
                           <div key={idx} className="text-xs opacity-80">
                             <span className="flex items-center gap-1">
-                              <FileText className="h-3 w-3" />
+                              {att.type === 'image' ? (
+                                <img
+                                  src={att.dataUrl}
+                                  alt={att.fileName}
+                                  className="h-8 w-8 rounded object-cover"
+                                />
+                              ) : (
+                                <FileText className="h-3 w-3" />
+                              )}
                               {att.fileName}
                             </span>
                           </div>
@@ -443,24 +607,38 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Attachment Preview */}
+      {/* Attachment Preview - 消息列表下方：缩略图 / 文件名 / 移除按钮 */}
       {attachments.length > 0 && (
-        <div className="border-t border-border px-4 py-2">
-          <div className="flex flex-wrap gap-2">
+        <div className="border-t border-border bg-background/50 px-4 py-2">
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {attachments.map((att, idx) => (
               <div
                 key={idx}
-                className="relative flex items-center gap-1 border border-border bg-background px-2 py-1 text-xs"
+                className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-1.5"
               >
-                <>
-                  <FileText className="h-3 w-3" />
-                  <span className="max-w-24 truncate">{att.fileName}</span>
-                </>
+                {/* 左侧：缩略图（图片）或文档图标 */}
+                {att.type === 'image' ? (
+                  <img
+                    src={att.dataUrl}
+                    alt={att.fileName}
+                    className="h-9 w-9 flex-shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-primary/5">
+                    <FileText className="h-4 w-4 text-muted" />
+                  </div>
+                )}
+                {/* 中间：文件名 */}
+                <span className="flex-1 min-w-0 truncate text-sm text-primary">
+                  {att.fileName}
+                </span>
+                {/* 右侧：移除按钮 */}
                 <button
                   onClick={() => removeAttachment(idx)}
-                  className="ml-1 text-muted hover:text-primary"
+                  title="移除附件"
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted transition-colors hover:bg-background hover:text-primary"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </button>
               </div>
             ))}
@@ -470,6 +648,15 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
       {/* Input Area - 优化后的大输入框设计 */}
       <div className="border-t border-border p-4">
+        {/* Image2 生成参数：仅当项目引擎是 image2 时显示 */}
+        {engineType === 'image2' && (
+          <div className="mb-2">
+            <Image2ParamsBar
+              value={image2Params}
+              onChange={setImage2Params}
+            />
+          </div>
+        )}
         <div className="relative flex flex-col border border-border rounded-lg bg-background focus-within:border-primary transition-colors">
           {/* Textarea */}
           <textarea
@@ -490,12 +677,22 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
               <Button
                 variant="ghost"
                 size="icon"
-                title="上传文档 (docx, txt, md)"
+                title="上传文档（最多 5 个，单个 ≤1MB；docx / txt / md）"
                 onClick={handleDocumentUpload}
                 disabled={isStreaming || isProcessingFile}
                 className="h-8 w-8 rounded-lg border border-border"
               >
                 <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                title="上传图片（最多 1 张，单个 ≤1MB，再次点击替换）"
+                onClick={handleImageUpload}
+                disabled={isStreaming || isProcessingFile}
+                className="h-8 w-8 rounded-lg border border-border"
+              >
+                <ImageIcon className="h-4 w-4" />
               </Button>
               {isProcessingFile && (
                 <span className="flex items-center text-xs text-muted ml-2">

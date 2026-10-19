@@ -28,6 +28,11 @@ const ENGINE_TIPS: Record<EngineType, { title: string; features: string[]; types
     features: ['专业图表', '精细编辑'],
     types: ['UML', '流程图', '架构图'],
   },
+  image2: {
+    title: 'Image2',
+    features: ['文字生图', '高保真', '多尺寸'],
+    types: ['插画', '海报', '产品图', '概念图', '风格化'],
+  },
 }
 
 interface CreateProjectDialogProps {

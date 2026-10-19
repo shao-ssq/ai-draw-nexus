@@ -33,17 +33,41 @@ function buildUrl(env: Env, method: 'streamGenerateContent' | 'generateContent')
   return `${resolveGeminiBase(env)}/v1beta/models/${model}:${method}`
 }
 
-/** Flatten a message content (string | ContentPart[]) into Gemini text parts. */
-function toParts(content: string | ContentPart[]): Array<{ text: string }> {
+/** Gemini 支持的 part 形态：文本 / 内联图像 */
+type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } }
+
+/** Flatten a message content (string | ContentPart[]) into Gemini parts. */
+function toParts(content: string | ContentPart[]): GeminiPart[] {
   if (typeof content === 'string') return [{ text: content }]
-  return content
-    .filter((p) => p.type === 'text' && p.text)
-    .map((p) => ({ text: p.text as string }))
+  const parts: GeminiPart[] = []
+  for (const p of content) {
+    if (p.type === 'text' && p.text) {
+      parts.push({ text: p.text })
+    } else if (p.type === 'image_url' && p.image_url?.url) {
+      const url = p.image_url.url
+      // 当前只支持 data: URL；HTTP URL 需要先 fetch 再编码，留待以后
+      const match = url.match(/^data:([^;,]+);base64,(.+)$/)
+      if (!match) {
+        throw new Error(
+          `Unsupported image_url format (only data:base64 is supported): ${url.slice(0, 40)}…`,
+        )
+      }
+      parts.push({
+        inline_data: {
+          mime_type: match[1],
+          data: match[2],
+        },
+      })
+    }
+  }
+  return parts
 }
 
 interface GeminiRequestBody {
   systemInstruction?: { parts: Array<{ text: string }> }
-  contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>
+  contents: Array<{ role: 'user' | 'model'; parts: GeminiPart[] }>
   generationConfig: Record<string, unknown>
 }
 

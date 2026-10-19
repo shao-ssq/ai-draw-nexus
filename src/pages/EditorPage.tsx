@@ -294,31 +294,44 @@ export function EditorPage() {
 
         {/* Right: Actions */}
         <div className="ml-auto flex items-center gap-2">
-          {/* Export dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5">
-                <Download className="h-3.5 w-3.5" />
-                <span className="text-[11px]">导出</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuRadioGroup>
-                <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
-                  <Code className="mr-2 h-4 w-4" />
-                  导出为 SVG
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
-                  <Image className="mr-2 h-4 w-4" />
-                  导出为 PNG
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  导出原文件
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* image2 引擎：单按钮直接导 JPG，不进 dropdown */}
+          {currentProject.engineType === 'image2' ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => canvasRef.current?.exportAsPng()}
+              className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="text-[11px]">导出 JPG</span>
+            </Button>
+          ) : (
+            /* 其它引擎：导出 dropdown（SVG / PNG / 原文件） */
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg border border-[#e5e7eb] px-2.5">
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="text-[11px]">导出</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuRadioGroup>
+                  <DropdownMenuRadioItem className='pl-2' value="svg" onClick={() => canvasRef.current?.exportAsSvg()}>
+                    <Code className="mr-2 h-4 w-4" />
+                    导出为 SVG
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className='pl-2' value="png" onClick={() => canvasRef.current?.exportAsPng()}>
+                    <Image className="mr-2 h-4 w-4" />
+                    导出为 PNG
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem className='pl-2' value="source" onClick={() => canvasRef.current?.exportAsSource()}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    导出原文件
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Source Code button */}
           <Button
@@ -387,7 +400,7 @@ export function EditorPage() {
         {/* Right: Version Panel (collapsible, all engines) */}
         {isVersionPanelOpen && (
           <div className="w-64 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-            <VersionPanel onCollapse={() => setIsVersionPanelOpen(false)} />
+            <VersionPanel />
           </div>
         )}
       </div>

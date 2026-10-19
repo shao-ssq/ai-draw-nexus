@@ -714,7 +714,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       >
         <div className="text-center">
           <p className="text-sm">暂无图表</p>
-          <p className="mt-1 text-xs">使用 WeDraw 生成一个吧</p>
+          <p className="mt-1 text-xs">使用 机灵鬼<span className="text-[0.7em]">儿</span> 生成一个吧</p>
         </div>
       </div>
     )

@@ -7,7 +7,7 @@
 
 const MXFILE_HEAD =
   '<?xml version="1.0" encoding="UTF-8"?>\n' +
-  '<mxfile host="wedraw" agent="WeDraw/1.0" version="31.4.6">'
+  '<mxfile host="wedraw" agent="机灵鬼儿/1.0" version="31.4.6">'
 const DIAGRAM_OPEN = '<diagram id="page-1" name="Page-1">'
 const GRAPHMODEL_OPEN =
   '<mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" ' +

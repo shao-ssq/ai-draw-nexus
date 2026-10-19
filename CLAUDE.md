@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WeDraw - An AI-powered diagram creation platform supporting Mermaid, Excalidraw, and Draw.io engines. Users describe diagrams in natural language and AI generates them.
+机灵鬼儿 - An AI-powered diagram creation platform supporting Mermaid, Excalidraw, and Draw.io engines. Users describe diagrams in natural language and AI generates them.
 
 ## Development Commands
 
@@ -84,7 +84,6 @@ Create `.env` file in root directory (see `.env.example`):
 ```env
 AI_API_KEY=your-api-key
 AI_BASE_URL=https://api.anthropic.com
-AI_PROVIDER=anthropic
 AI_MODEL_ID=claude-sonnet-5
 # Gemini 原生协议根地址（Gemini 模型的思考内容只走原生协议才回传；
 # 如中转站 https://api.openai-proxy.org/google。不填则按 AI_BASE_URL 推导）

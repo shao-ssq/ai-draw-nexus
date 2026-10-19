@@ -54,6 +54,17 @@ ${userInput}
 仅输出最终图中的可见 mxCell 元素。不要输出 ASCII Layout、Blueprint、规划说明、mxfile、diagram、mxGraphModel、root，也不要输出 id 为 0 和 1 的基础 mxCell。`
   }
 
+  // Single-phase generation (image2)
+  // image2 是图像生成：服务端会注入 SYSTEM_PROMPTS.image2（drawing-prompt designer 指令），
+  // 让设计师 LLM 把"用户需求"翻译成图像模型用的 prompt。所以这里只传用户原始输入，
+  // 不加任何额外约束——约束都在 system prompt 里。
+  if (!useTwoPhase && engineType === 'image2') {
+    return `用户需求：
+"""
+${userInput}
+"""`
+  }
+
   // Single-phase generation (fallback)
   if (!useTwoPhase) {
     return `用户需求：

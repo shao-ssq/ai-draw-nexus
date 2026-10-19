@@ -1,9 +1,15 @@
 /**
- * File upload utilities for document handling
+ * File upload utilities for document & image handling
  */
 
 // Maximum file size (in bytes)
-export const MAX_DOCUMENT_SIZE = 5 * 1024 * 1024 // 5MB
+export const MAX_DOCUMENT_SIZE = 1 * 1024 * 1024 // 1MB
+export const MAX_IMAGE_SIZE = 1 * 1024 * 1024 // 1MB
+
+// Maximum number of documents allowed per request (HomePage & ChatPanel 共用)
+export const MAX_DOCUMENT_COUNT = 5
+// 图片上限 1 张：统一首页 / 绘图界面
+export const MAX_IMAGE_COUNT = 1
 
 // Supported file types
 export const SUPPORTED_DOCUMENT_TYPES = [
@@ -13,6 +19,15 @@ export const SUPPORTED_DOCUMENT_TYPES = [
 ]
 // 文件扩展名映射（用于处理某些浏览器不识别 MIME 类型的情况）
 export const SUPPORTED_DOCUMENT_EXTENSIONS = ['.docx', '.txt', '.md']
+
+export const SUPPORTED_IMAGE_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/webp',
+]
+export const SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
 
 export interface FileValidationResult {
   valid: boolean
@@ -45,11 +60,48 @@ export function validateDocumentFile(file: File): FileValidationResult {
   if (file.size > MAX_DOCUMENT_SIZE) {
     return {
       valid: false,
-      error: `文档过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：5MB`,
+      error: `文档过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：1MB`,
     }
   }
 
   return { valid: true }
+}
+
+/**
+ * 验证图片文件
+ */
+export function validateImageFile(file: File): FileValidationResult {
+  const extension = getFileExtension(file.name)
+  const isValidType = SUPPORTED_IMAGE_TYPES.includes(file.type) ||
+                      SUPPORTED_IMAGE_EXTENSIONS.includes(extension)
+
+  if (!isValidType) {
+    return {
+      valid: false,
+      error: `不支持的图片格式。支持的格式：png、jpg、jpeg、gif、webp`,
+    }
+  }
+
+  if (file.size > MAX_IMAGE_SIZE) {
+    return {
+      valid: false,
+      error: `图片过大：${(file.size / 1024 / 1024).toFixed(2)}MB。最大支持：1MB`,
+    }
+  }
+
+  return { valid: true }
+}
+
+/**
+ * 读取文件为 Data URL（用于图片预览 / 后续送 AI）
+ */
+export function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('读取图片失败'))
+    reader.readAsDataURL(file)
+  })
 }
 
 /**

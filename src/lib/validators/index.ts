@@ -136,6 +136,15 @@ export async function validateContent(
       return validateExcalidraw(content)
     case 'drawio':
       return validateDrawio(content)
+    case 'image2':
+      // image2 的 content 是 data URL（data:image/...;base64,...）
+      if (!content) {
+        return { valid: false, error: '图片为空' }
+      }
+      if (!/^data:image\/[a-zA-Z0-9+]+;base64,/.test(content)) {
+        return { valid: false, error: '图片格式无效（需为 base64 data URL）' }
+      }
+      return { valid: true }
     default:
       return { valid: false, error: `Unknown engine type: ${engineType}` }
   }

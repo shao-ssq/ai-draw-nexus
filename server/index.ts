@@ -4,12 +4,14 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { chat } from './routes/chat.js'
 import { health } from './routes/health.js'
+import { generateImage } from './routes/generate-image.js'
 
 const app = new Hono()
 
 // API 路由
 app.route('/api', chat)
 app.route('/api', health)
+app.route('/api', generateImage)
 
 // drawio 自托管静态资源（drawio 31.4.6），路径 /drawio/* → ./server/public/drawio/*
 app.use('/drawio/*', serveStatic({

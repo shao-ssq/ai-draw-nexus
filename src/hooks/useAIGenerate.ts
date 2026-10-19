@@ -14,7 +14,7 @@ import { aiService } from '@/services/aiService'
 import { validateContent } from '@/lib/validators'
 import { ensureMxfileWrapped } from '@/lib/drawioXml'
 import { useToast } from '@/hooks/useToast'
-import type { PayloadMessage, EngineType, Attachment, ContentPart, ThinkingLevel } from '@/types'
+import type { PayloadMessage, EngineType, Attachment, ContentPart, ThinkingLevel, Image2Params } from '@/types'
 
 // Enable streaming by default, can be configured
 const USE_STREAMING = true
@@ -84,8 +84,11 @@ function extractPartialExcalidrawArray(src: string): string | null {
 }
 
 /**
- * Build content from text and optional document attachments.
- * 图片上传已移除：仅支持文本与文档（docx/txt/md）附件。
+ * Build content from text and optional attachments.
+ *
+ * 文档：append 抽取后的文本
+ * 图片：作为 image_url part 发出；服务端 stream-gemini.ts 会拆 dataUrl
+ *   转为 Gemini 原生协议的 inline_data { mime_type, data }。
  */
 function buildMultimodalContent(
   text: string,
@@ -104,12 +107,18 @@ function buildMultimodalContent(
     parts.push({ type: 'text', text })
   }
 
-  // Add user document attachments (append extracted text)
+  // Add user attachments
   for (const attachment of attachments) {
     if (attachment.type === 'document') {
       parts.push({
         type: 'text',
         text: `\n\n[Document: ${attachment.fileName}]\n${attachment.content}`,
+      })
+    } else if (attachment.type === 'image') {
+      // 多模态：图片作为 image_url part，由服务端翻译为 Gemini 的 inline_data
+      parts.push({
+        type: 'image_url',
+        image_url: { url: attachment.dataUrl },
       })
     }
   }
@@ -271,6 +280,7 @@ export function useAIGenerate() {
     isInitial: boolean,
     attachments?: Attachment[],
     thinkingMode?: ThinkingLevel,
+    image2Params?: Image2Params | null,
   ) => {
     const project = useEditorStore.getState().projectById[projectId]
     if (!project) {
@@ -345,6 +355,26 @@ export function useAIGenerate() {
 
     try {
       let finalCode: string
+
+      // image2 是图像生成引擎：两步链路 —— 设计师 LLM → gpt-image-2
+      //   1) /api/chat?engine=image2 会注入 SYSTEM_PROMPTS.image2，
+      //      让设计师 LLM 把用户需求翻译成图像模型用的 prompt；
+      //      第二轮起会把"当前画布上的图"也作为 image_url 喂给 Gemini，
+      //      让它看到上一版长什么样，按"再亮一点"这种编辑指令设计合理的新 prompt。
+      //   2) 把那段 prompt 原封不动 POST 给 /api/generate-image（gpt-image-2），
+      //      拿回 base64 data URL 当 content。每轮都重画，不走 in-place edits 端点。
+      if (engineType === 'image2') {
+        await generateImage2(
+          myProjectId,
+          userInput,
+          assistantMsgId,
+          attachments,
+          image2Params ?? null,
+          currentContent,
+          abortController.signal,
+        )
+        return
+      }
 
       if (isInitial) {
         // 暂时全都使用一步生成
@@ -777,6 +807,170 @@ export function useAIGenerate() {
     }
 
     return currentCode
+  }
+
+  /**
+   * image2 生成链路：设计师 LLM（流式） → gpt-image-2
+   *
+   *   1) /api/chat?engine=image2 — 服务端注入 SYSTEM_PROMPTS.image2（drawing-prompt designer）
+   *      流式返回：thinking 走 reasoningContent、最终 prompt 走 content。
+   *      用户在 ChatPanel 看到"思考中"折叠框 + 设计的 prompt 字符级展开。
+   *      第二轮起把"当前画布上的图"也作为 image_url 喂给 Gemini，让设计师看到上一版，
+   *      按"再亮一点"这种编辑指令输出合理新 prompt。**仍然走 generations 端点重新出图**。
+   *   2) /api/generate-image — 用流式累积的 prompt POST 出去，gpt-image-2 返回 base64 data URL
+   *   3) content 保留设计的 prompt（流式累积结果），dataUrl 走 attachments 让 ChatPanel 渲染
+   */
+  const generateImage2 = async (
+    projectId: string,
+    userInput: string,
+    assistantMsgId: string,
+    attachments: Attachment[] | undefined,
+    image2Params: Image2Params | null,
+    currentContent: string,
+    signal: AbortSignal,
+  ) => {
+    const myProjectId = projectId
+
+    if (signal.aborted) return
+
+    // Step 1: 设计师 LLM（流式） —— 把用户需求翻译成图像模型用的 prompt
+    // 参考图作为 image_url parts 一起发，遵循 system prompt 里
+    // "when images are attached, name the traits to carry over" 这条。
+    //
+    // 第二轮起：currentContent（当前画布上的图）也作为 image_url 喂给设计师，
+    // 让 Gemini 看到上一版长什么样，按"再亮一点"这种编辑指令输出合理的新 prompt。
+    const referenceImages = (attachments ?? []).filter(
+      (a): a is ImageAttachment => a.type === 'image',
+    )
+    const previousImage: ContentPart[] = currentContent.startsWith('data:image/')
+      ? [{ type: 'image_url', image_url: { url: currentContent } }]
+      : []
+    const designerContent: ContentPart[] = [
+      { type: 'text', text: buildInitialPrompt(userInput, false, undefined, undefined, 'image2') },
+      ...previousImage,
+      ...referenceImages.map<ContentPart>((img) => ({
+        type: 'image_url',
+        image_url: { url: img.dataUrl },
+      })),
+    ]
+    const designerMessages: PayloadMessage[] = [
+      { role: 'user', content: designerContent },
+    ]
+
+    // 复用文本引擎的 rAF 平滑显示 —— handleContentChunk / handleReasoningChunk
+    // 内部走 store update + requestAnimationFrame 节流，体验跟 mermaid/drawio 一致
+    const designerThinkingText = '正在设计图像 prompt'
+
+    // 流式调用设计师 LLM；累积的 final content 就是 prompt 全文
+    const rawPrompt = await aiService.streamChat(
+      designerMessages,
+      'image2',
+      (_chunk, accumulated) => {
+        handleContentChunk(myProjectId, assistantMsgId, accumulated)
+      },
+      'medium', // thinking 默认档位（gemini 不支持 low/high 之外的精细控制；image2 不需要思考过程）
+      undefined,
+      (isThinking) => {
+        // 思考 → 设计 prompt → 生成图片：phaseLabel 跟着切换
+        updateMessage(myProjectId, assistantMsgId, {
+          phaseLabel: isThinking ? '思考中...' : designerThinkingText,
+        })
+      },
+      (_chunk, accumulated) => {
+        handleReasoningChunk(myProjectId, assistantMsgId, accumulated)
+      },
+      signal,
+    )
+    if (signal.aborted) return
+
+    // 兜底：剥离 LLM 偶发的 markdown 代码块包裹
+    const designedPrompt = rawPrompt
+      .replace(/^```[a-zA-Z]*\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim()
+
+    if (!designedPrompt) {
+      throw new Error('设计师 LLM 未返回有效 prompt')
+    }
+
+    // Step 2: gpt-image-2 —— POST 给后端 /api/generate-image
+    updateMessage(myProjectId, assistantMsgId, {
+      phaseLabel: '正在生成图像',
+    })
+    const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api'
+    const response = await fetch(`${API_BASE_URL}/generate-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: designedPrompt,
+        referenceImages: attachments
+          ?.filter((a): a is ImageAttachment => a.type === 'image')
+          .map((a) => ({ mimeType: a.mimeType, dataUrl: a.dataUrl })),
+        params: {
+          aspectRatio: image2Params?.aspectRatio ?? '1:1',
+          resolution: image2Params?.resolution ?? '1k',
+          quality: image2Params?.quality ?? 'medium',
+        },
+      }),
+      signal,
+    })
+
+    if (signal.aborted) return
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '')
+      throw new Error(`图片生成失败（${response.status}）：${errText || response.statusText}`)
+    }
+
+    const { dataUrl } = (await response.json()) as { dataUrl: string }
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      throw new Error('后端返回的 dataUrl 格式无效')
+    }
+
+    // Step 3: 与其它引擎同路径 —— 写 content / version / thumbnail / 时间戳
+    setContentFromVersion(myProjectId, dataUrl)
+
+    // 助手消息：content 保留设计的 prompt（流式累积结果），
+    // dataUrl 放进 attachments 让 ChatPanel 走现有图片附件渲染。
+    const generatedAt = new Date()
+    const ratio = image2Params?.aspectRatio ?? '1:1'
+    const res = image2Params?.resolution ?? '1k'
+    const fileName = `image2-${ratio.replace(':', 'x')}-${res}-${generatedAt.toISOString().replace(/[:.]/g, '-')}.png`
+    updateMessage(myProjectId, assistantMsgId, {
+      attachments: [
+        {
+          type: 'image',
+          dataUrl,
+          fileName,
+          mimeType: 'image/png',
+        },
+      ],
+      status: 'complete',
+      phaseLabel: '绘制完成',
+    })
+
+    await VersionRepository.create({
+      projectId: myProjectId,
+      content: dataUrl,
+      changeSummary: '初始生成',
+    })
+
+    try {
+      const getter = useEditorStore.getState().thumbnailGetterByProject[myProjectId]
+      const thumbnail = getter ? await getter() : dataUrl
+      if (thumbnail) {
+        await ProjectRepository.update(myProjectId, { thumbnail })
+        const previous = useEditorStore.getState().projectById[myProjectId]
+        if (previous) {
+          setProject(myProjectId, { ...previous, thumbnail })
+        }
+      }
+    } catch (err) {
+      console.error('[image2] Failed to save thumbnail:', err)
+    }
+
+    await ProjectRepository.update(myProjectId, {})
+    success('图片已生成')
   }
 
   return { generate }

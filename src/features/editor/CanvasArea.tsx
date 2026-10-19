@@ -1,4 +1,4 @@
-import { useCallback, useRef, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { useCallback, useRef, useImperativeHandle, forwardRef, useEffect, useState } from 'react'
 import {
   useEditorStore,
   selectActiveContent,
@@ -13,6 +13,7 @@ import {
 import { MermaidRenderer, type MermaidRendererRef } from '@/features/engines/mermaid/MermaidRenderer'
 import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/excalidraw/ExcalidrawEditor'
 import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/DrawioEditor'
+import { Image2Viewer, type Image2ViewerRef } from '@/features/engines/image2/Image2Viewer'
 
 export interface CanvasAreaRef {
   exportAsSvg: () => void
@@ -43,6 +44,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
   const mermaidRef = useRef<MermaidRendererRef>(null)
   const excalidrawRef = useRef<ExcalidrawEditorRef>(null)
   const drawioRef = useRef<DrawioEditorRef>(null)
+  const image2Ref = useRef<Image2ViewerRef>(null)
 
   // Expose methods via ref
   useImperativeHandle(ref, () => ({
@@ -57,6 +59,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.exportAsSvg()
           break
+        case 'image2':
+          image2Ref.current?.exportAsSvg()
+          break
       }
     },
     exportAsPng: () => {
@@ -69,6 +74,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.exportAsPng()
+          break
+        case 'image2':
+          image2Ref.current?.exportAsPng()
           break
       }
     },
@@ -83,6 +91,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.exportAsSource()
           break
+        case 'image2':
+          image2Ref.current?.exportAsSource()
+          break
       }
     },
     showSourceCode: () => {
@@ -95,6 +106,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.showSourceCode()
+          break
+        case 'image2':
+          image2Ref.current?.showSourceCode()
           break
       }
     },
@@ -109,6 +123,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.hideSourceCode()
           break
+        case 'image2':
+          image2Ref.current?.hideSourceCode()
+          break
       }
     },
     toggleSourceCode: () => {
@@ -122,31 +139,39 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.toggleSourceCode()
           break
+        case 'image2':
+          image2Ref.current?.toggleSourceCode()
+          break
       }
     },
     getThumbnail: async () => {
       if (engineType === 'drawio' && drawioRef.current) {
         return drawioRef.current.getThumbnail()
       }
+      if (engineType === 'image2' && image2Ref.current) {
+        return image2Ref.current.getThumbnail()
+      }
       return ''
     },
   }), [engineType])
 
-  // Register thumbnail getter for drawio engine (按 projectId 注册，
+  // Register thumbnail getter for drawio & image2 engines (按 projectId 注册，
   // 后台项目的 thumbnailGetter 各自独立，互不影响)
   useEffect(() => {
-    if (engineType === 'drawio' && currentProjectId) {
-      const projectId = currentProjectId
-      setThumbnailGetter(projectId, async () => {
-        if (drawioRef.current) {
-          return drawioRef.current.getThumbnail()
-        }
-        return ''
-      })
-      return () => {
-        setThumbnailGetter(projectId, null)
-      }
+    if (!currentProjectId) return
+    const projectId = currentProjectId
+
+    if (engineType === 'drawio' && drawioRef.current) {
+      setThumbnailGetter(projectId, async () => drawioRef.current!.getThumbnail())
+      return () => setThumbnailGetter(projectId, null)
     }
+
+    if (engineType === 'image2' && image2Ref.current) {
+      // 直接用图片 data URL 做缩略图 —— 不用再走画布渲染
+      setThumbnailGetter(projectId, async () => image2Ref.current!.getThumbnail())
+      return () => setThumbnailGetter(projectId, null)
+    }
+
     // 其他引擎不注册，useAIGenerate 会用 generateThumbnail 兜底
   }, [engineType, currentProjectId, setThumbnailGetter])
 
@@ -157,6 +182,21 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
       </div>
     )
   }
+
+  // 加载计时：从 isLoading 变 true 开始，每秒 +1；false 时清零
+  const [elapsedSec, setElapsedSec] = useState(0)
+  useEffect(() => {
+    if (!isLoading) {
+      setElapsedSec(0)
+      return
+    }
+    setElapsedSec(0)
+    const startedAt = Date.now()
+    const timer = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [isLoading])
 
   // Handle content change from editors - only update store, no auto-save to database
   const handleContentChange = useCallback((newContent: string) => {
@@ -194,6 +234,14 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
             onChange={handleContentChange}
           />
         )
+      case 'image2':
+        return (
+          <Image2Viewer
+            ref={image2Ref}
+            key={projectKey}
+            code={currentContent}
+          />
+        )
       default:
         return null
     }
@@ -208,7 +256,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         <div className="absolute inset-0 flex items-center justify-center bg-background/80">
           <div className="text-center">
             <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-r-transparent mx-auto" />
-            <p className="text-sm text-muted">Generating diagram...</p>
+            <p className="text-sm text-muted">Generating diagram... {elapsedSec}s</p>
           </div>
         </div>
       )}

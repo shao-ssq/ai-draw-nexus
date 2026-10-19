@@ -6,7 +6,8 @@ import {
   Database,
   Users,
   ShoppingCart,
-  FolderOpen
+  FolderOpen,
+  ImagePlus,
 } from 'lucide-react'
 import type { EngineType } from '@/types'
 
@@ -14,6 +15,7 @@ export const ENGINES: { value: EngineType; label: string }[] = [
   { value: 'mermaid', label: 'Mermaid' },
   { value: 'excalidraw', label: 'Excalidraw' },
   { value: 'drawio', label: 'Draw.io' },
+  { value: 'image2', label: 'Image2' },
 ]
 
 export const NAV_ITEMS = [

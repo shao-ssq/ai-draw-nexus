@@ -23,8 +23,14 @@ export interface Message {
 }
 
 export interface ContentPart {
-  type: 'text'
+  type: 'text' | 'image_url'
+  /** text part: 正文 */
   text?: string
+  /** image_url part: OpenAI 多模态协议；url 通常是 data:image/...;base64,... */
+  image_url?: {
+    url: string
+    detail?: 'auto' | 'low' | 'high'
+  }
 }
 
 export interface ChatRequest {

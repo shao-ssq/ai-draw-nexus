@@ -405,7 +405,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       // 跨 remount 复用 EditorUi 时仍能把最新缩放值路由到当前挂载的组件）
       slot.zoomHandler = (p: number) => setZoomPercent(p)
 
-      // 屏蔽 Ctrl+S：drawio 自带的保存（弹下载/对话框）与 WeDraw 的 IndexedDB
+      // 屏蔽 Ctrl+S：drawio 自带的保存（弹下载/对话框）与 机灵鬼儿 的 IndexedDB
       // 自动保存冲突，capture 阶段拦截，先于 drawio 的 document 级按键监听触发
       const swallowCtrlS = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
