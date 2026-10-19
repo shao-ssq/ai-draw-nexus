@@ -541,7 +541,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="ai-messages-scroll flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted">
             <p className="text-sm">

@@ -389,6 +389,26 @@ body {
   border-radius: 2px;
 }
 
+/* AI 助手消息列表滚动条 */
+.ai-messages-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+.ai-messages-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.ai-messages-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ai-messages-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle, #e5e7eb);
+  border-radius: 2px;
+}
+.ai-messages-scroll::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db;
+}
+
 /* 头部内联过程状态 */
 .ai-status-chip {
   display: inline-flex;
