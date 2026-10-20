@@ -12,6 +12,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Dev server port (5173 → 8800). strictPort: 端口被占用时直接报错，而不是静默跳到 8801
+    port: 8800,
+    strictPort: true,
     proxy: {
       // Forward API requests to the Node backend (Hono on port 8787)
       '/api': {

@@ -46,6 +46,15 @@ declare global {
     ICON_SERVICE_PATH?: string | null
     onDrawioAppReady?: (ui: any) => void
     wedrawCreateAppUi?: () => any
+    // Cross-lifecycle singleton holder: App.main can only run once per page, so the
+    // EditorUi instance is stashed on window and reused across remounts.
+    // Must stay the ONLY declaration of this property (DrawioEditor.tsx and
+    // drawioLifecycle.ts both use it) — two different types here is TS2717.
+    __wedrawDrawio?: {
+      app: any | null
+      changeHandler: ((xml: string) => void) | null
+      zoomHandler: ((percent: number) => void) | null
+    }
     STYLE_PATH?: string
     CSS_PATH?: string
     OPEN_FORM?: string

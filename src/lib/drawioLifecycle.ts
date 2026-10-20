@@ -10,17 +10,9 @@
  * 顺手再把 window.onbeforeunload 清掉（覆盖其他可能注册的 inline handler）。
  */
 
-declare global {
-  interface Window {
-    __wedrawDrawio?: {
-      app?: {
-        editor?: {
-          setModified?: (modified: boolean) => void
-        }
-      }
-    }
-  }
-}
+// Window.__wedrawDrawio is declared once in src/types/drawio.d.ts — a second
+// declaration with a narrower shape here shadowed it program-wide (TS2717) and
+// broke every drawio editor access in DrawioEditor.tsx.
 
 export function clearDrawioModifiedBeforeUnload(): void {
   if (typeof window === 'undefined') return

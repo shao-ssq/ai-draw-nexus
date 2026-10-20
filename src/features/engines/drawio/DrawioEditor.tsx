@@ -354,16 +354,11 @@ function resetCanvas(ui: any): void {
 // references on window so they survive React component lifecycles.
 // EditorUi is an untyped drawio global; `any` is intentional.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-interface DrawioGlobalSlot {
-  app: any | null
-  changeHandler: ((xml: string) => void) | null
-  zoomHandler: ((percent: number) => void) | null
-}
-declare global {
-  interface Window {
-    __wedrawDrawio?: DrawioGlobalSlot
-  }
-}
+// The canonical Window.__wedrawDrawio declaration lives in src/types/drawio.d.ts
+// and is shared with drawioLifecycle.ts. Declaring it here as well would give the
+// same property two different types (TS2717), and whichever loses the merge
+// silently narrows the other file's view of the slot.
+type DrawioGlobalSlot = NonNullable<Window['__wedrawDrawio']>
 
 export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
   function DrawioEditor({ data, onChange, className, darkMode: _darkMode = false }, ref) {

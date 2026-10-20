@@ -11,6 +11,16 @@ const ROOT = join(__dirname, '..')
 const SRC = 'C:/Users/shaoqisun/Desktop/drawio-31.4.6/src/main/webapp'
 const DST = join(ROOT, 'server/public/drawio')
 
+// Guard: the drawio source tree lives on one dev machine and is not available on
+// CI / a server that only cloned this repo. server/public/drawio is committed to
+// git, so when SRC is missing we must leave DST alone — falling through to the
+// wipe below would empty it and silently break the drawio engine in the build.
+if (!existsSync(SRC)) {
+  console.warn(`[copy-drawio] source not found: ${SRC}`)
+  console.warn('[copy-drawio] skipped; keeping existing server/public/drawio')
+  process.exit(0)
+}
+
 // 1. Wipe target
 rmSync(DST, { recursive: true, force: true })
 mkdirSync(DST, { recursive: true })

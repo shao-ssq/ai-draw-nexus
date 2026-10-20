@@ -14,7 +14,7 @@ import { aiService } from '@/services/aiService'
 import { validateContent } from '@/lib/validators'
 import { ensureMxfileWrapped } from '@/lib/drawioXml'
 import { useToast } from '@/hooks/useToast'
-import type { PayloadMessage, EngineType, Attachment, ContentPart, ThinkingLevel, Image2Params } from '@/types'
+import type { PayloadMessage, EngineType, Attachment, ImageAttachment, ContentPart, ThinkingLevel, Image2Params } from '@/types'
 
 // Enable streaming by default, can be configured
 const USE_STREAMING = true
