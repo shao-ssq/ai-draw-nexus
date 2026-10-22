@@ -9,6 +9,7 @@ import {
 import {
   useChatStore,
   selectActiveIsStreaming,
+  selectActiveStreamingStartedAt,
 } from '@/stores/chatStore'
 import { MermaidRenderer, type MermaidRendererRef } from '@/features/engines/mermaid/MermaidRenderer'
 import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/excalidraw/ExcalidrawEditor'
@@ -33,6 +34,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
   const engineType = useEditorStore(selectEngineType)
   // Loading overlay 只反映当前活跃项目的流式状态 —— 后台项目的 streaming 不会污染当前 UI
   const isLoading = useChatStore(selectActiveIsStreaming)
+  const streamingStartedAt = useChatStore(selectActiveStreamingStartedAt)
   const setContent = useEditorStore((s) => s.setContent)
   const setThumbnailGetter = useEditorStore((s) => s.setThumbnailGetter)
 
@@ -166,6 +168,33 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
     // 其他引擎不注册，useAIGenerate 会用 generateThumbnail 兜底
   }, [engineType, currentProjectId, setThumbnailGetter])
 
+  // 加载计时：耗时由 store 里存的"流式开始时间戳"推导，不在本地累加秒数。
+  // 这样切走再回来不会归零（重新进入显示的就是真实耗时），切到另一个正在
+  // 生成的项目也只显示它自己的耗时 —— 每个项目一份，互不串。
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (streamingStartedAt == null) return
+    const tick = () => setNow(Date.now())
+    // 先补一次 tick：interval 要等 1 秒才响，而切回一个正在生成的项目时，
+    // 现在这个 state 还停在"离开的那一刻"，会先显示一秒的旧秒数。
+    const first = setTimeout(tick, 0)
+    const timer = setInterval(tick, 1000)
+    return () => {
+      clearTimeout(first)
+      clearInterval(timer)
+    }
+  }, [streamingStartedAt])
+  const elapsedSec =
+    streamingStartedAt == null
+      ? 0
+      : Math.max(0, Math.floor((now - streamingStartedAt) / 1000))
+
+  // Handle content change from editors - only update store, no auto-save to database
+  const handleContentChange = useCallback((newContent: string) => {
+    if (!currentProjectId) return
+    setContent(currentProjectId, newContent)
+  }, [setContent, currentProjectId])
+
   if (!engineType) {
     return (
       <div className="flex h-full items-center justify-center bg-background text-muted">
@@ -173,27 +202,6 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
       </div>
     )
   }
-
-  // 加载计时：从 isLoading 变 true 开始，每秒 +1；false 时清零
-  const [elapsedSec, setElapsedSec] = useState(0)
-  useEffect(() => {
-    if (!isLoading) {
-      setElapsedSec(0)
-      return
-    }
-    setElapsedSec(0)
-    const startedAt = Date.now()
-    const timer = setInterval(() => {
-      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [isLoading])
-
-  // Handle content change from editors - only update store, no auto-save to database
-  const handleContentChange = useCallback((newContent: string) => {
-    if (!currentProjectId) return
-    setContent(currentProjectId, newContent)
-  }, [setContent, currentProjectId])
 
   // Render based on engine type
   const renderEngine = () => {

@@ -289,62 +289,149 @@ function downloadBlob(href: string, filename: string) {
   }
 }
 
-/**
- * 把复用中的 EditorUi 画布重置为空白状态。
- * 新建项目没有历史版本（data 为空），但 EditorUi 是跨项目复用的全局单例，
- * 不主动清空的话新项目会显示上一个项目的内容。
+/* ── 跨项目复用同一个 EditorUi ──────────────────────────────────────────
+ * EditorUi 是 drawio 的无类型全局，下面的 helper 一律按 `any` 处理。
+ * drawio 的 App.main 有 isMainCalled 全局守卫，一页只能建出一个 EditorUi。
+ * 所以切项目不能新建实例 —— 实测每多一个实例会永久泄漏 6 个 document/window
+ * 级监听器（document 的 selectstart capture、window 的 resize，以及
+ * mxTooltipHandler.install 挂的 4 个 pointer capture，destroy() 一个都收不回来）。
  *
- * 关键：必须保留 drawio 的 base cells（id="0" 和 id="1" parent="0"），
- * 它们是 Graph 的 base structure，不参与 vertex/edge 渲染但 graph 工作所必需。
- * 老逻辑用 `model.remove(child)` 一律删除，把 base cells 也清掉了，
- * 导致后续 setFileData 不能正常显示（画布灰色），必须刷新才能恢复。
- * 现在只移除 vertex pages（其他项目残留的内容），与 initializeCanvas 保持一致。
+ * 复用要成立，两件事必须做对：
+ *   1) drawio 自己的 DOM 活过 React 卸载 —— 见 parkDrawioNodes / moveToHost
+ *   2) 用官方 setFileData 原地换图 —— 见 loadFileIntoCanvas
  */
-function resetCanvas(ui: any): void {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/** 停泊位 id：drawio 自己的 DOM 在 React 卸载期间暂存于此 */
+const PARKING_ID = 'wedraw-drawio-parking'
+
+/**
+ * drawio 的 UI DOM 挂在 React 管的 #drawio-host 下，React 卸载时整块被摘出
+ * document —— 之后 document.querySelectorAll 再也找不到它们，跨项目复用
+ * EditorUi 时新画布就是灰空的。卸载前把 drawio 自己的节点挪到 body 上的停泊位，
+ * 下次挂载由 moveToHost 原样捞回新的 hostDiv。
+ *
+ * 停泊位不能设 display:none：graph.view 需要真实布局尺寸才能算对滚动条与缩放，
+ * 塌成 0 尺寸后再撑回来容易错。挪到视口外即可。
+ */
+function ensureParkingLot(): HTMLElement {
+  let lot = document.getElementById(PARKING_ID) as HTMLElement | null
+  if (!lot) {
+    lot = document.createElement('div')
+    lot.id = PARKING_ID
+    lot.style.cssText =
+      'position:fixed;left:-100000px;top:0;width:1200px;height:800px;' +
+      'overflow:hidden;pointer-events:none;'
+    document.body.appendChild(lot)
+  }
+  return lot
+}
+
+/**
+ * 把 drawio 自己的 DOM 从 hostDiv 挪进停泊位，让它们活过 React 卸载。
+ * React 自己渲染的浮层（工具条 / 缩放条 / Loading 遮罩）带 data-wedraw-react
+ * 标记，跳过不挪 —— 那些由 React 负责增删。
+ */
+function parkDrawioNodes(hostDiv: HTMLElement | null): void {
+  if (!hostDiv) return
+  const lot = ensureParkingLot()
+  for (const el of Array.from(hostDiv.children)) {
+    if (el.hasAttribute('data-wedraw-react')) continue
+    lot.appendChild(el)
+  }
+}
+
+/**
+ * 每项目初始化：删掉建 EditorUi 时塞进 root 的默认页、保底一个 layer、
+ * 缩放回 100%、关掉页签。慢路径（首次 App.main）和快路径（跨项目复用）都要跑，
+ * 否则第二个项目会带着上一个项目的默认页和缩放状态。
+ *
+ * 必须在加载项目内容之前调用 —— 慢路径踩过这个坑：setIsReady 早于它的话，
+ * [data, isReady] effect 会先把内容灌进画布，然后这里又把 vertex 全删光。
+ */
+function prepareCanvas(ui: any): boolean {
   try {
     const graph = ui.editor?.graph
-    if (!graph) return
+    if (!graph) return false
     const model = graph.getModel()
     const root = model.root
 
     model.beginUpdate()
     try {
-      // 递归清空：保留 base cells (id="0" root, id="1" default layer) 本身，
-      // 但清空它们 children 里的所有非 base cell（包括上次的 user 内容）。
-      // 老逻辑只删 root 的直接 children —— 上次的 mxCell 嵌在 layer.children
-      // 里（layer id="1" 是 root 的 child），不被删除，导致切到新项目时
-      // 画布仍显示上次的画布内容。
-      const BASE_CELL_IDS = new Set(['0', '1'])
-      const cleanSubtree = (parent: any) => {
-        for (let i = model.getChildCount(parent) - 1; i >= 0; i--) {
-          const child = model.getChildAt(parent, i)
-          if (!child) continue
-          if (BASE_CELL_IDS.has(child.id)) {
-            // 保留 base cell 但递归清空它的 children
-            cleanSubtree(child)
-            continue
-          }
-          model.remove(child)
-        }
+      // 只删 vertex（drawio 的"页"），保留 base cells（id=0 的 root、
+      // id=1 的默认 layer）—— 它们不参与渲染但 Graph 工作所必需。
+      for (let i = model.getChildCount(root) - 1; i >= 0; i--) {
+        const child = model.getChildAt(root, i)
+        if (child && model.isVertex(child)) model.remove(child)
       }
-      cleanSubtree(root)
     } finally {
       model.endUpdate()
     }
 
-    // 保证 root 下有一个 layer（非 vertex 单元）作为默认父节点
+    // 保证 root 下有一个 layer 作为默认父节点
     if (model.getChildCount(root) === 0) {
       const layer = new window.mxCell(null, new window.mxGeometry(), null)
       model.add(root, layer, 0)
     }
 
-    // 清空撤销栈：否则新项目里 Ctrl+Z 会把旧项目的图形"撤销"回来
-    ui.editor.undoManager?.clear()
-    ui.editor.setModified(false)
     graph.zoomActual()
+    graph.centerZoom = false
+    if (typeof graph.zoomTo === 'function') {
+      graph.zoomTo(1, false)
+    }
+    ui.setPageVisible?.(false)
+
+    graph.refresh?.()
+    ui.editor?.refresh?.()
+    return true
   } catch (e) {
-    console.error('[DrawioEditor] Failed to reset canvas:', e)
+    console.error('[DrawioEditor] prepareCanvas failed:', e)
+    return false
   }
+}
+
+/**
+ * 把一段 mxfile XML 灌进复用中的 EditorUi 画布。
+ *
+ * 走官方的 EditorUi.setFileData，它内部是
+ *   setFileData → Editor.setGraphXml
+ *     → graph.model.clear() + mxCodec.decode(..., graph.getModel())
+ * 原地改写同一个 model，graph.view / undoManager / 所有 CHANGE 监听都还在。
+ *
+ * 注意：这个版本的 mxGraph 没有 setModel 也没有 mxUtils.createModel —— model
+ * 和 view 都在 mxGraph 构造函数里一次性创建，之后只原地 mutate（实测在
+ * app.min.js 与 mxgraph/src 中均为 0 命中）。所以"换一个 model 对象"这条路
+ * 走不通，老代码里那段 graph.setModel 分支是永远不会执行的死代码。
+ */
+function loadFileIntoCanvas(ui: any, wrappedXml: string): void {
+  try {
+    ui.setFileData(wrappedXml)
+  } catch (e) {
+    console.error('[DrawioEditor] setFileData failed', e)
+  }
+  try {
+    ui.setPageVisible?.(false)
+    // setFileData 只 clear + decode，撤销栈里还留着上一个项目的图形，
+    // 不清的话新项目里 Ctrl+Z 会把它们"撤销"回来。
+    ui.editor?.undoManager?.clear?.()
+    ui.editor?.setModified?.(false)
+  } catch { /* noop */ }
+  // 强制 view 完全重绘。多档 setTimeout 兜底 drawio 内部的 view 同步时序
+  // —— graph.init / decode 之后，view 的容器尺寸未必已经就绪。
+  const refreshView = () => {
+    try {
+      ui.editor?.refresh?.()
+      ui.editor?.graph?.refresh?.()
+      ui.editor?.graph?.view?.validate?.()
+      ui.editor?.graph?.view?.revalidate?.()
+      ui.editor?.graph?.repaint?.()
+      ui.setPageVisible?.(false)
+    } catch { /* noop */ }
+  }
+  setTimeout(refreshView, 0)
+  setTimeout(refreshView, 50)
+  setTimeout(refreshView, 200)
+  setTimeout(refreshView, 500)
 }
 
 // Global singleton holders — App.main can only run once per page (it has
@@ -352,10 +439,8 @@ function resetCanvas(ui: any): void {
 // React unmounts/remounts <DrawioEditor>; we need to reuse the existing
 // EditorUi instance instead of trying to re-initialise drawio. We stash
 // references on window so they survive React component lifecycles.
-// EditorUi is an untyped drawio global; `any` is intentional.
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// The canonical Window.__wedrawDrawio declaration lives in src/types/drawio.d.ts
-// and is shared with drawioLifecycle.ts. Declaring it here as well would give the
+// The canonical Window.__wedrawDrawio declaration lives in src/types/drawio.d.ts.
+// Declaring it here as well would give the
 // same property two different types (TS2717), and whichever loses the merge
 // silently narrows the other file's view of the slot.
 type DrawioGlobalSlot = NonNullable<Window['__wedrawDrawio']>
@@ -364,7 +449,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
   function DrawioEditor({ data, onChange, className, darkMode: _darkMode = false }, ref) {
     const containerHostRef = useRef<HTMLDivElement | null>(null)
     const changeTimerRef = useRef<number | null>(null)
-    const pendingInternalDataRef = useRef<string | null>(null)
     const baseElRef = useRef<HTMLBaseElement | null>(null)
     const styleElRef = useRef<HTMLStyleElement | null>(null)
     const mxScriptRef = useRef<HTMLScriptElement | null>(null)
@@ -394,8 +478,15 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         app: null,
         changeHandler: null,
         zoomHandler: null,
+        initialized: false,
+        host: null,
+        initCanvas: null,
+        lastEmittedXml: null,
       })
       const cancelled = { v: false }
+      // App.main 是异步回调，那时当前挂载可能已经换过一次。把 host 挂到
+      // slot 上，让 wedrawCreateAppUi 拿得到当前这一个。
+      slot.host = containerHostRef.current
       // 缩放百分比通过 slot 回传（view SCALE 监听在 initializeCanvas 中只挂一次，
       // 跨 remount 复用 EditorUi 时仍能把最新缩放值路由到当前挂载的组件）
       slot.zoomHandler = (p: number) => setZoomPercent(p)
@@ -422,35 +513,113 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         'geHsplit',
         'geSpriteBackground',
         'geSidebarTooltip',
+        // 浮动样式面板挂在 hostDiv 下（graph.container.parentElement 就是
+        // hostDiv），必须跟着 drawio 的 DOM 一起被停泊/回收，否则切一次
+        // 项目就再也找不到了
+        'wedraw-floating-format-panel',
       ]
       // moveToHost 需要在 fast path 也能被调用（跨 remount 主动迁移旧 DOM 节点），
       // 所以提到外层；闭包捕获的 hostDiv / cancelled 在每次 effect 重新求值时
       // 都是当前挂载的引用，安全。
       const moveToHost = () => {
         if (!hostDiv || cancelled.v) return
+        // 候选节点按 DOM 深度从浅到深搬 —— 祖先必须先于后代。
+        //
+        // 顺序错了会出事：浮动样式面板 #floating-format-panel 里装着
+        // formatContainer，若先搬 formatContainer，它会被从面板里"拽"出来
+        // 挂到 hostDiv 根上，面板变空 —— 表现就是切过一次项目之后，点图形
+        // 不再弹出格式面板（面板本体还是 display:none）。
+        //
+        // 来源有三种，document.querySelectorAll 都能覆盖（停泊位挂在 body 上）：
+        //   a) body 的直接子节点（首启，drawio 默认挂 body）
+        //   b) 停泊位里的节点（fast path：上次卸载时 parkDrawioNodes 挪过去的）
+        //   c) 任何不在当前 hostDiv 里的节点
+        const nodes = new Set<Element>()
         drawioClasses.forEach((cls) => {
-          document.querySelectorAll('.' + cls).forEach((el) => {
-            // 既要搬 body 上的子节点（首启），也要搬非当前 hostDiv 父级的
-            // 旧节点（fast path 跨 remount 复用 EditorUi 时，旧 DOM 仍挂在
-            // 上一次被卸载的 hostDiv 里，需要强制迁移到新的 hostDiv）
-            if (
-              el.parentElement === document.body ||
-              !hostDiv.contains(el)
-            ) {
-              hostDiv.appendChild(el)
+          document.querySelectorAll('.' + cls).forEach((el) => nodes.add(el))
+        })
+        const domDepth = (el: Element) => {
+          let d = 0
+          for (let p = el.parentElement; p; p = p.parentElement) d++
+          return d
+        }
+        // 快照已经取好，排序用的深度在搬动过程中会失效 —— 这正是我们要的：
+        // 按搬动前的深度排，祖先一定排在后代前面。
+        const ordered = [...nodes].sort((a, b) => domDepth(a) - domDepth(b))
+        for (const el of ordered) {
+          if (el.parentElement !== document.body && hostDiv.contains(el)) continue
+          hostDiv.appendChild(el)
+        }
+      }
+      const observer = hostDiv
+        ? new MutationObserver(() => {
+            if (!cancelled.v) {
+              setTimeout(moveToHost, 0)
             }
           })
-        })
+        : null
+      observer?.observe(document.body, { childList: true })
+
+      // 把当前画布 XML 写回 store。走 slot.changeHandler 中转而不是闭包捕获
+      // onChange：每次 remount 都会重接 slot.changeHandler，这里实时读它，
+      // 卸载时的最后一次 flush 才不会把旧项目的 XML 写进新项目的槽。
+      const emitChange = () => {
+        try {
+          const drawioUi = slot.app
+          if (!drawioUi) return
+          const node = drawioUi.getXmlFileData(true, false, true, false)
+          const xml = window.mxUtils.getXml(node)
+          // 记在 slot 上而不是组件 ref 里：scheduleEmitChange 是在慢路径注册到
+          // model 上的，跨项目一直活着，它闭包里的 ref 属于第一次挂载的那个
+          // 组件实例。切过项目之后，[data] effect 读的是新实例的 ref，两者对不
+          // 上 → 这个"自己 emit 出去的别再灌回来"的判断永远不成立 → 拖一次图形
+          // 就触发一次 setFileData，画布被重置 + 重新居中。
+          slot.lastEmittedXml = xml
+          slot.changeHandler?.(xml)
+        } catch (e) {
+          console.error('[DrawioEditor] getXmlFileData failed', e)
+        }
       }
-      if (hostDiv) {
-        // Observe immediately
-        const observer = new MutationObserver(() => {
-          if (!cancelled.v) {
-            setTimeout(moveToHost, 0)
-          }
-        })
-        observer.observe(document.body, { childList: true })
-        ;(hostDiv as any).__drawioObserver = observer
+
+      const scheduleEmitChange = () => {
+        if (changeTimerRef.current != null) {
+          window.clearTimeout(changeTimerRef.current)
+        }
+        changeTimerRef.current = window.setTimeout(() => {
+          changeTimerRef.current = null
+          emitChange()
+        }, CHANGE_DEBOUNCE_MS)
+      }
+
+      // 卸载清理。慢路径 / 快路径 / StrictMode 双调用共用这一份。
+      const cleanup = () => {
+        cancelled.v = true
+        window.removeEventListener('keydown', swallowCtrlS, true)
+        // 清掉上一个项目遗留的"刚 emit 出去"标记，必须在下面的 flush 之前 ——
+        // flush 自己也会写一份新的。
+        slot.lastEmittedXml = null
+        // 未触发的防抖 change 定时器：不能直接 clear 掉 —— 用户最后一次画布
+        // 编辑后 300ms 内就切项目的话，那次编辑会被整个丢掉（软导航之后这
+        // 是个常见操作）。改成立刻 flush，把改动写回本项目。
+        if (changeTimerRef.current != null) {
+          window.clearTimeout(changeTimerRef.current)
+          changeTimerRef.current = null
+          emitChange()
+        }
+        // 必须 disconnect：否则每次 remount 都会在 document.body 上留下一个
+        // 永久生效的 observer。切项目在软路由下是高频路径，泄漏会很明显。
+        observer?.disconnect()
+        // drawio 自己的 DOM 交给停泊位保管。不挪的话 React 卸载会把它们
+        // 连根拔起，下次挂载的 document.querySelectorAll 再也找不到，
+        // 跨项目复用 EditorUi 时画布就是灰空的。
+        parkDrawioNodes(hostDiv)
+        // Keep <base>, <style>, and <script>s alive across remounts.
+        // On full page reload everything is GC'd naturally.
+        //
+        // 特别提醒：这里不能因为"这轮启动还没跑完"（slot.app 还是 null）就去拔
+        // bootstrap.js。StrictMode 每次挂载都会 mount→cleanup→mount，拔了会让
+        // 下一轮重新插一份，drawio 整套脚本跑两次，画布里会叠出两套
+        // geDiagramContainer。启动被中断的残骸由快路径开头的 stale 检查兜。
       }
 
       // 1) Inject <base href="/drawio/"> so drawio's relative paths
@@ -494,13 +663,9 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
       // 3) Fast path: drawio already booted on this page (StrictMode second
       //    pass, or user switched projects). Reuse the existing EditorUi.
       if (slot.app) {
-        // Wire onChange into the existing listener (re-attached in step 5).
-        slot.changeHandler = (xml: string) => onChange?.(xml)
-        const scale = slot.app.editor?.graph?.view?.scale
-        if (typeof scale === 'number') setZoomPercent(Math.round(scale * 100))
-
-        // Fast path 跨项目 remount 复用 EditorUi：旧 DOM 仍挂在被卸载的 hostDiv
-        // 上，body 上观察不到 mutation，必须主动把 drawio 子节点搬到新 hostDiv
+        // 跨项目 remount：drawio 自己的 DOM 在上一次卸载时被 parkDrawioNodes
+        // 挪进了 body 上的停泊位，那时候 body 观察不到 mutation，所以这里
+        // 必须先主动捞回新的 hostDiv —— 下面的可用性检查才判断得准。
         if (hostDiv) {
           moveToHost()
           // 兜底：drawio 异步重建 graph 时可能再次产生新节点，延迟再搬一次
@@ -508,24 +673,44 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           setTimeout(moveToHost, 50)
         }
 
-        // 新建项目（无历史版本）data 为空：必须重置画布，否则旧项目内容残留显示
-        if (!data) {
-          resetCanvas(slot.app)
-        }
+        // 再验一下这个 EditorUi 还能不能用：上一轮启动没跑完、组件就卸载了的
+        // 情况会留下一个残骸 —— App.main 把 graph 容器建进了当时那个已被
+        // React 摘除的 hostDiv，document.querySelectorAll 捞不到它。这种残骸
+        // 一旦被当成可用的复用，画布会一直灰着，只能 F5。
+        const graphContainer = slot.app.editor?.graph?.container
+        if (!graphContainer || (!!hostDiv && !hostDiv.contains(graphContainer))) {
+          console.warn(
+            '[DrawioEditor] 上一轮启动未完成留下的残骸 EditorUi，丢弃并重新启动一次',
+          )
+          document.querySelectorAll('script[data-wedraw]').forEach((el) => el.remove())
+          slot.app = null
+          slot.initialized = false
+          slot.initCanvas = null
+          // App.main 的 isMainCalled 守卫要放行，否则这一轮启动会被静默跳过
+          const AppOnStale: any = (window as any).App
+          if (AppOnStale) AppOnStale.isMainCalled = false
+        } else {
+          // Wire onChange into the existing listener (registered once in step 4
+          // on the model, which setFileData mutates in place — so it survives).
+          slot.changeHandler = (xml: string) => onChange?.(xml)
+          const scale = slot.app.editor?.graph?.view?.scale
+          if (typeof scale === 'number') setZoomPercent(Math.round(scale * 100))
 
-        setIsReady(true)
-        return () => {
-          cancelled.v = true
-          window.removeEventListener('keydown', swallowCtrlS, true)
-          // 清除未触发的防抖 change 定时器：否则切换项目后才触发的话，
-          // 旧项目的 XML 会经由新挂载的 changeHandler 写进新项目的 store
-          if (changeTimerRef.current != null) {
-            clearTimeout(changeTimerRef.current)
-            changeTimerRef.current = null
+          // 上一次挂载可能在 drawio 启动完成前就被卸载（App.main 建出了
+          // EditorUi，但 onDrawioAppReady 因为组件已卸载而提前返回，初始化
+          // 没跑）。这种 EditorUi 缺了一次性定制，用 slot.initCanvas 补上。
+          if (!slot.initialized) {
+            slot.initCanvas?.()
+            slot.initialized = true
           }
-          // Do NOT remove scripts / <base> / <style>: they must survive
-          // remounts so the next mount can reuse the EditorUi. Real cleanup
-          // happens on full page reload.
+
+          // 每项目初始化：删掉上一个项目残留的默认页、缩放回 100%、关掉页签。
+          // 必须在下面的 setIsReady → [data, isReady] effect 加载内容之前跑，
+          // 否则会把刚灌进去的内容当成"默认页"删光。
+          prepareCanvas(slot.app)
+
+          setIsReady(true)
+          return cleanup
         }
       }
 
@@ -539,25 +724,29 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
        
       const AppCtor: any = (window as any).App
       if (AppCtor && hostDiv) {
-         
+
         const EditorCtor: any = (window as any).Editor
-         
+
         window.wedrawCreateAppUi = function (): any {
           // chromeless=true hides the menubar; uiTheme='min' minimises chrome
+          // host 取自 slot 而不是闭包捕获：App.main 是异步回调，那时当前挂载
+          // 可能已经换过一次，闭包里的 hostDiv 会是已经被卸载的旧节点。
           return new AppCtor(
             new EditorCtor(true, null, null, null, false),
-            hostDiv,
+            slot.host ?? hostDiv,
             true,
           )
         }
       }
       window.onDrawioAppReady = (ui) => {
-        if (cancelled.v) return
-
         const drawioUi: any = ui
+        // 即便组件已经卸载，也必须先把 EditorUi 存进 slot：App.main 的
+        // isMainCalled 守卫在它之前就置位了，同一页再也建不出第二个实例。
+        // 丢掉的话下次挂载会永远卡在 "Loading Draw.io..."。
         slot.app = drawioUi
 
-        // Function to clear content and set zoom to 100% + center view
+        // 一次性定制（跟具体项目无关）+ 末尾的 prepareCanvas。存到 slot 上，
+        // 快路径在"上次卸载时启动被中断、初始化没跑完"的情况下可以补跑。
         const initializeCanvas = () => {
           try {
             const graph = drawioUi.editor?.graph
@@ -636,44 +825,11 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               return report
             }
 
-            const model = graph.getModel()
-            const root = model.root
-
-            // Delete all default cells (pages) except root
-            model.beginUpdate()
-            try {
-              const pageCount = model.getChildCount(root)
-              for (let i = pageCount - 1; i >= 0; i--) {
-                const page = model.getChildAt(root, i)
-                if (page && model.isVertex(page)) {
-                  model.remove(page)
-                }
-              }
-            } finally {
-              model.endUpdate()
-            }
-
-            // 保证 root 下有一个 layer（非 vertex 单元）作为默认父节点。
-            // 不能 insertVertex 充当页面 —— 那会渲染出一个可见矩形。
-            if (model.getChildCount(root) === 0) {
-              const layer = new window.mxCell(null, new window.mxGeometry(), null)
-              model.add(root, layer, 0)
-            }
-
-            // Zoom to 100%
-            graph.zoomActual()
-            graph.centerZoom = false
-
             // 空白处左键拖拽 = 平移画布（替代默认的框选），与 Mermaid 引擎交互一致。
             // panning 默认已启用（Graph 构造时 setPanning(true)），这里只把左键
             // 交给平移；拖拽落在元素上时仍是移动元素，不受影响。
             if (graph.panningHandler) {
               graph.panningHandler.useLeftButtonForPanning = true
-            }
-
-            // Use zoomTo to ensure 100%
-            if (typeof graph.zoomTo === 'function') {
-              graph.zoomTo(1, false)
             }
 
             // 监听缩放变化，把百分比回传给 React（左下角悬浮缩放条显示用）
@@ -686,9 +842,6 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               graph.view.addListener(window.mxEvent.SCALE, updateZoom)
             }
             updateZoom()
-
-            // Keep page view disabled by default and synchronize the menu state.
-            drawioUi.setPageVisible(false)
 
             // 从"所有图形"面板和"+更多图形"对话框中移除"搜索"与"便签本"：
             // 对话框（MoreShapesDialog）直接渲染 sidebar.entries 的分区数据，
@@ -731,6 +884,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
             if (formatContainer && diagramContainer) {
               const floatingPanel = document.createElement('div')
               floatingPanel.id = 'floating-format-panel'
+              floatingPanel.className = 'wedraw-floating-format-panel'
               // 上下居中于画布，并整体上移 16px；底部预留 40px 间距
               floatingPanel.style.cssText =
                 'position:absolute;right:10px;top:50%;transform:translateY(calc(-50% - 16px));width:240px;z-index:1000;max-height:calc(100% - 30px);display:none;'
@@ -758,16 +912,18 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
               syncFormatPanel()
             }
 
-            // Refresh UI
-            graph.refresh?.()
-            drawioUi?.editor?.refresh?.()
-
-            return true
+            // 每项目那半（删默认页 / 保 layer / 缩放回 100% / 关页签 / 重绘）
+            // 交给模块级 prepareCanvas —— 快路径切项目时只需要跑这半，
+            // 上面这些一次性定制已经挂在 EditorUi 上了，不用重做。
+            return prepareCanvas(drawioUi)
           } catch (e) {
             console.error('[DrawioEditor] Failed to initialize canvas:', e)
             return false
           }
         }
+        slot.initCanvas = initializeCanvas
+
+        if (cancelled.v) return
 
         // Try immediately, then retry a few times to handle async loading.
         // setIsReady(true) 必须放在 initializeCanvas 成功之后：
@@ -780,6 +936,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           attempts++
           if (initializeCanvas()) {
             console.log('[DrawioEditor] Canvas initialized successfully')
+            slot.initialized = true
             slot.changeHandler = (xml: string) => onChange?.(xml)
             setIsReady(true)
             return
@@ -790,23 +947,9 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         }
         setTimeout(tryInit, 100)
 
-        const fireChange = () => {
-          if (changeTimerRef.current != null) {
-            clearTimeout(changeTimerRef.current)
-          }
-          changeTimerRef.current = window.setTimeout(() => {
-            changeTimerRef.current = null
-            try {
-              const node = drawioUi.getXmlFileData(true, false, true, false)
-              const xml = window.mxUtils.getXml(node)
-              pendingInternalDataRef.current = xml
-              slot.changeHandler?.(xml)
-            } catch (e) {
-              console.error('[DrawioEditor] getXmlFileData failed', e)
-            }
-          }, CHANGE_DEBOUNCE_MS)
-        }
-        drawioUi.editor.graph.model.addListener(window.mxEvent.CHANGE, fireChange)
+        // CHANGE 监听挂在 model 上，只挂这一次。setFileData 是原地 clear+decode
+        // 同一个 model，所以切项目不会把它冲掉。
+        drawioUi.editor.graph.model.addListener(window.mxEvent.CHANGE, scheduleEmitChange)
 
         // Mirror the React-side darkMode preference onto the drawio body.
         document.body.classList.toggle('geDarkMode', !!_darkMode)
@@ -832,17 +975,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
         bootstrapScriptRef.current = bootstrap
       }
 
-      return () => {
-        cancelled.v = true
-        window.removeEventListener('keydown', swallowCtrlS, true)
-        // 清除未触发的防抖 change 定时器：切换项目时旧定时器触发会把旧 XML 写进新项目 store
-        if (changeTimerRef.current != null) {
-          clearTimeout(changeTimerRef.current)
-          changeTimerRef.current = null
-        }
-        // Keep <base>, <style>, and <script>s alive across remounts.
-        // On full page reload everything is GC'd naturally.
-      }
+      return cleanup
       // onChange is captured via the slot.changeHandler indirection above,
       // so each remount wires its own callback without re-registering
       // drawio listeners.
@@ -872,82 +1005,25 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
     // Apply `data` prop changes once drawio is ready.
     useEffect(() => {
-      const ui = window.__wedrawDrawio?.app
+      const slot = window.__wedrawDrawio
+      const ui = slot?.app
       if (!isReady || !ui) return
 
-      // 新项目（无历史版本）data 为空：EditorUi 是跨项目复用的单例，
-      // 必须显式重置画布，否则旧项目的内容会残留显示在新画板上。
-      // 慢路径下 EditorUi 首次就绪时 `initializeCanvas` 还没跑过，resetCanvas 之后
-      // 还需要一个最小 mxfile wrapper 让 drawio 渲染出可用的 graph 容器（光有 layer
-      // 没有 root 的 cell tree 结构，drawio 会显示灰色空白画板）。
-      // 不能走 ensureMxfileWrapped('')：那个函数对空串早 return，画布仍是空的。
-      // 直接 wrap 一个空 inner 拿到最小但合法的 wrapper。
-      if (!data) {
-        resetCanvas(ui)
-        try {
-          ui.setFileData(wrapToMxfile(''))
-        } catch (e) {
-          console.error('[DrawioEditor] setFileData (empty) failed', e)
-        }
-        // 强制 view 刷新（fast path 没调 initializeCanvas，view 缓存可能 stale）
-        const refreshView = () => {
-          try {
-            ui.editor?.refresh?.()
-            ui.editor?.graph?.refresh?.()
-          } catch { /* noop */ }
-        }
-        // 多重 refresh 兜底 drawio 内部 view 同步时序
-        setTimeout(refreshView, 0)
-        setTimeout(refreshView, 50)
-        setTimeout(refreshView, 200)
+      // 自己刚刚 emit 出去的 XML 回流到 store —— 别再灌一遍画布。
+      // 这里必须读 slot.lastEmittedXml 而不是组件 ref：emit 侧的闭包活到
+      // 整个页面结束（监听挂在 model 上），ref 是第一次挂载那个实例的。
+      if (slot.lastEmittedXml !== null && slot.lastEmittedXml === data) {
+        slot.lastEmittedXml = null
+        ui.setPageVisible?.(false)
         return
       }
+      slot.lastEmittedXml = null
 
-      if (pendingInternalDataRef.current === data) {
-        pendingInternalDataRef.current = null
-        ui.setPageVisible(false)
-        return
-      }
-
-      try {
-        const wrapped = ensureMxfileWrapped(data)
-        // 直接用 mxGraph API 设置 model —— 绕开 drawio Editor.setFileData 的
-        // 内部状态问题。drawio 在 fast path 跨项目 remount 时 EditorUi 复用，
-        // setFileData 可能在 view cache 失效时不能正确显示；直接 setModel +
-        // view.revalidate + refresh 更直接。
-        if (ui.editor?.graph && window.mxUtils?.createModel) {
-          const doc = window.mxUtils.parseXml(wrapped)
-          const modelNode = doc?.documentElement
-          if (modelNode) {
-            const newModel = window.mxUtils.createModel(modelNode)
-            if (newModel) {
-              ui.editor.graph.setModel(newModel)
-            }
-          }
-        } else {
-          // 兜底：原 setFileData 路径
-          ui.setFileData(wrapped)
-        }
-        ui.setPageVisible(false)
-        ui.editor.setModified(false)
-        // 强制 view 完全重绘
-        const reset = () => {
-          try {
-            ui.editor?.refresh?.()
-            ui.editor?.graph?.refresh?.()
-            ui.editor?.graph?.view?.validate?.()
-            ui.editor?.graph?.view?.revalidate?.()
-            ui.editor?.graph?.repaint?.()
-            ui.setPageVisible?.(false)
-          } catch { /* noop */ }
-        }
-        setTimeout(reset, 0)
-        setTimeout(reset, 50)
-        setTimeout(reset, 200)
-        setTimeout(reset, 500)
-      } catch (e) {
-        console.error('[DrawioEditor] setFileData failed', e)
-      }
+      // 新项目（无历史版本）data 为空：setFileData 会 clear 掉整个 model，
+      // 所以上一个项目的内容不会残留。灌一份最小但合法的 wrapper 进去，
+      // 让 drawio 渲染出可用的 cell tree —— 不能走 ensureMxfileWrapped('')，
+      // 那个函数对空串早 return。
+      loadFileIntoCanvas(ui, data ? ensureMxfileWrapped(data) : wrapToMxfile(''))
     }, [data, isReady])
 
     // ---------- Imperative API ----------
@@ -1246,7 +1322,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           {/* drawio mounts itself into this div via App.main's createUi factory */}
           {/* 形状工具条 - 左侧竖排悬浮（替换原生顶部工具栏，样式对齐 Mermaid） */}
           {isReady && (
-            <div className="wedraw-float-bar absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 p-1 shadow-md backdrop-blur-md">
+            <div data-wedraw-react="" className="wedraw-float-bar absolute left-3 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-surface/90 p-1 shadow-md backdrop-blur-md">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" onClick={() => insertShape('rect')} className="h-8 w-8 rounded-lg p-0 text-muted hover:bg-black/5 hover:text-primary">
@@ -1315,7 +1391,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
 
           {/* 缩放/撤销/重做控制 - 左下角悬浮（样式完全对齐 Mermaid 引擎） */}
           {isReady && (
-            <div className="wedraw-float-bar absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-md bg-surface/80 px-0.5 py-0.5 shadow-sm backdrop-blur-sm">
+            <div data-wedraw-react="" className="wedraw-float-bar absolute bottom-3 left-3 z-20 flex items-center gap-0.5 rounded-md bg-surface/80 px-0.5 py-0.5 shadow-sm backdrop-blur-sm">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-6 w-6 p-0">
@@ -1361,7 +1437,7 @@ export const DrawioEditor = forwardRef<DrawioEditorRef, DrawioEditorProps>(
           )}
 
           {!isReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/80">
+            <div data-wedraw-react="" className="absolute inset-0 flex items-center justify-center bg-background/80">
               <div className="text-center">
                 <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-r-transparent mx-auto" />
                 <p className="text-sm text-muted">Loading Draw.io...</p>

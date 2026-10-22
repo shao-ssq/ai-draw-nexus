@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { clearDrawioModifiedBeforeUnload } from '@/lib/drawioLifecycle'
 import {
   Button,
   Dialog,
@@ -54,15 +53,8 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
         engineType: engine,
       })
       onOpenChange(false)
-      // DRAWIO 的 EditorUi 是跨项目复用的全局单例，软导航切换时旧 state 残留导致
-      // 画布灰空。强制整页 reload 让 EditorUi 从零初始化。
-      if (engine === 'drawio') {
-        // 清掉 drawio 的 modified 状态，否则它的 beforeunload 监听器会弹"Changes..."对话框
-        clearDrawioModifiedBeforeUnload()
-        window.location.assign(`/editor/${project.id}`)
-      } else {
-        navigate(`/editor/${project.id}`)
-      }
+      // 所有引擎都走软导航（drawio 的跨项目画布复用已在 DrawioEditor 里处理好）
+      navigate(`/editor/${project.id}`)
     } catch (error) {
       console.error('Failed to create project:', error)
     } finally {

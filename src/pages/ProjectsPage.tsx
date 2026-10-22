@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { clearDrawioModifiedBeforeUnload } from '@/lib/drawioLifecycle'
 import { Plus, Trash2, Sparkles, Pencil } from 'lucide-react'
 import {
   Button,
@@ -152,15 +151,15 @@ export function ProjectsPage() {
                     key={project.id}
                     className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-surface transition-all hover:border-primary hover:shadow-md"
                     onClick={() => {
-                      // DRAWIO 的 EditorUi 是跨项目复用的全局单例，软导航切换项目时
-                      // 旧 state 残留导致画布灰空。强制整页 reload 让 EditorUi 从零初始化。
-                      if (project.engineType === 'drawio') {
-                        // 清掉 drawio 的 modified 状态，否则它的 beforeunload 监听器会弹"Changes..."对话框
-                        clearDrawioModifiedBeforeUnload()
-                        window.location.assign(`/editor/${project.id}`)
-                      } else {
-                        navigate(`/editor/${project.id}`)
-                      }
+                      // 所有引擎都走软导航。这里曾经对 drawio 用 window.location.assign
+                      // 强制整页刷新，绕开"第二个 DRAWIO 项目画布灰空"—— 那个灰空的
+                      // 真正原因是 DrawioEditor 复用 EditorUi 时没保住 drawio 自己的
+                      // DOM，已经在 DrawioEditor 里修掉了。
+                      //
+                      // 不能退回整页刷新：chatStore / editorStore 的"按 projectId 分槽、
+                      // 后台续跑"设计依赖同一个页面生命周期，整页刷新会连带 abort 掉正在
+                      // 跑的 SSE、清空所有内存态 —— 用户切项目回来时生成过程就没了。
+                      navigate(`/editor/${project.id}`)
                     }}
                   >
                     {/* Action Buttons - 右上角 */}

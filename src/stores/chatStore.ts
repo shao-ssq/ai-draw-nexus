@@ -10,6 +10,10 @@ interface ChatState {
   messagesByProject: Record<string, ChatMessage[]>
   // 各项目独立的 isStreaming 槽 —— 切换项目不影响其他项目的流式状态
   streamingByProject: Record<string, boolean>
+  // 各项目流式开始的绝对时间戳(ms) —— "正在生成 Ns" 的唯一真相来源。
+  // 存起始时间而不是累加秒数：切走再回来时直接 now - startedAt 就是真实耗时，
+  // 不会被重置成 0，也不会因为切到另一个正在生成的项目而串味。
+  streamingStartedAtByProject: Record<string, number>
   // 各项目的 AbortController —— 用于主动停止某个项目的流式请求
   abortControllersByProject: Record<string, AbortController>
   // Quick Start 一次性信号（HomePage → ChatPanel）
@@ -63,10 +67,30 @@ function flushPersist(projectId: string, messages: ChatMessage[]) {
   void ChatRepository.save(projectId, messages)
 }
 
+/**
+ * 把"看起来还在流式中、其实流早就断了"的消息标成已中断。
+ *
+ * 只在从 IndexedDB 恢复历史时用。走到这条路径说明该项目的内存槽是空的
+ * —— 也就意味着中间发生过整页刷新 / 崩溃 / 关标签页，流式请求早被 abort，
+ * 没人再去把这条消息的 status 翻成 complete。留着不改的话，气泡上的
+ * 转圈会永远转下去。
+ */
+function markInterrupted(messages: ChatMessage[]): ChatMessage[] {
+  let changed = false
+  const next = messages.map((msg) => {
+    if (msg.role !== 'assistant') return msg
+    if (msg.status !== 'streaming' && msg.status !== 'pending') return msg
+    changed = true
+    return { ...msg, status: 'error' as const, phaseLabel: '生成被中断' }
+  })
+  return changed ? next : messages
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   currentProjectId: null,
   messagesByProject: {},
   streamingByProject: {},
+  streamingStartedAtByProject: {},
   abortControllersByProject: {},
   initialPrompt: null,
   initialAttachments: null,
@@ -99,7 +123,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const stillEmpty = (get().messagesByProject[projectId]?.length ?? 0) === 0
       if (stillEmpty) {
         set((state) => ({
-          messagesByProject: { ...state.messagesByProject, [projectId]: history },
+          messagesByProject: { ...state.messagesByProject, [projectId]: markInterrupted(history) },
         }))
       }
     } catch (err) {
@@ -156,11 +180,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       // 已是目标状态就 no-op，避免无意义渲染
       if (state.streamingByProject[projectId] === streaming) return state
+      const startedAtByProject = { ...state.streamingStartedAtByProject }
+      if (streaming) {
+        startedAtByProject[projectId] = Date.now()
+      } else {
+        delete startedAtByProject[projectId]
+      }
       return {
         streamingByProject: {
           ...state.streamingByProject,
           [projectId]: streaming,
         },
+        streamingStartedAtByProject: startedAtByProject,
       }
     })
     // 流式结束时立即落盘一次，保证最后状态持久化
@@ -234,3 +265,7 @@ export const selectActiveMessages = (s: ChatState): ChatMessage[] =>
   (s.currentProjectId ? s.messagesByProject[s.currentProjectId] : undefined) ?? []
 export const selectActiveIsStreaming = (s: ChatState): boolean =>
   s.currentProjectId ? (s.streamingByProject[s.currentProjectId] ?? false) : false
+
+/** 当前活跃项目流式开始的绝对时间戳；没在生成时为 undefined */
+export const selectActiveStreamingStartedAt = (s: ChatState): number | undefined =>
+  s.currentProjectId ? s.streamingStartedAtByProject[s.currentProjectId] : undefined
