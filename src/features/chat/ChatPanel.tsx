@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send,
   FileText,
@@ -24,6 +24,7 @@ import {
   useEditorStore,
   selectIsEmpty,
   selectEngineType,
+  selectActiveContent,
 } from '@/stores/editorStore'
 import { useAIGenerate } from '@/hooks/useAIGenerate'
 import { useToast } from '@/hooks/useToast'
@@ -89,10 +90,16 @@ function ProcessChip({ msg }: { msg: ChatMessage }) {
 function AssistantMessageCard({
   msg,
   onRegenerate,
+  onShowImage,
+  isShownOnCanvas,
   modelInfo,
 }: {
   msg: ChatMessage
   onRegenerate: () => void
+  /** image2：把某张缩略图换到右侧画布上显示 */
+  onShowImage?: (dataUrl: string) => void
+  /** image2：该缩略图当前是不是画布上正显示的那张 */
+  isShownOnCanvas?: (dataUrl: string) => boolean
   modelInfo?: { modelId: string } | null
 }) {
   const [reasoningExpanded, setReasoningExpanded] = useState(false)
@@ -242,24 +249,40 @@ function AssistantMessageCard({
         <div className="mt-3 space-y-2">
           {msg.attachments
             .filter((a): a is ImageAttachment => a.type === 'image')
-            .map((att, idx) => (
-              <a
-                key={idx}
-                href={att.dataUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block overflow-hidden rounded-lg border border-border bg-background"
-              >
-                <img
-                  src={att.dataUrl}
-                  alt={att.fileName}
-                  className="block max-h-[480px] w-full object-contain"
-                />
-                <div className="border-t border-border bg-surface px-3 py-1.5 text-xs text-muted">
-                  {att.fileName}
-                </div>
-              </a>
-            ))}
+            .map((att, idx) => {
+              const shown = isShownOnCanvas?.(att.dataUrl) ?? false
+              return (
+                // 点击 = 把这张图换到右侧画布显示。同一项目可能已经生成过多张，
+                // 画布只展示当前选中的那张；导出走顶部那个固定的"导出 JPG"按钮。
+                //
+                // 这里用 button 而不是 <a href={dataUrl} target="_blank">：Chrome
+                // 禁止顶层导航到 data: URL，那种链接点了毫无反应，也不报错。
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onShowImage?.(att.dataUrl)}
+                  title="在右侧画布显示这张图"
+                  aria-label={`在画布显示 ${att.fileName}`}
+                  className={`block w-full cursor-pointer overflow-hidden rounded-lg border bg-background text-left transition-colors ${
+                    shown ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-primary'
+                  }`}
+                >
+                  <img
+                    src={att.dataUrl}
+                    alt={att.fileName}
+                    className="block max-h-[480px] w-full object-contain"
+                  />
+                  <div
+                    className={`flex items-center justify-between gap-2 border-t px-3 py-1.5 text-xs ${
+                      shown ? 'border-primary/40 bg-primary/5 text-primary' : 'border-border bg-surface text-muted'
+                    }`}
+                  >
+                    <span className="truncate">{att.fileName}</span>
+                    {shown && <span className="shrink-0">画布中显示</span>}
+                  </div>
+                </button>
+              )
+            })}
         </div>
       )}
     </div>
@@ -274,8 +297,8 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
   const [image2Params, setImage2Params] = useState<Image2Params>(DEFAULT_IMAGE2_PARAMS)
   const [modelInfo, setModelInfo] = useState<{ modelId: string } | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const prevMsgCountRef = useRef(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const hasHandledInitialPrompt = useRef(false)
 
@@ -293,8 +316,24 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const engineType = useEditorStore(selectEngineType)
+  // image2：画布内容本身就是图片的 data URL，所以"点缩略图换到画布"就是把
+  // 这张图的 data URL 写进当前项目的 content 槽，Image2Viewer 会跟着重渲染。
+  const canvasContent = useEditorStore(selectActiveContent)
+  const setCanvasContent = useEditorStore((s) => s.setContent)
   const { generate } = useAIGenerate()
   const { error: showError, success: showSuccess } = useToast()
+
+  const handleShowImage = useCallback((dataUrl: string) => {
+    if (!currentProjectId) return
+    setCanvasContent(currentProjectId, dataUrl)
+  }, [currentProjectId, setCanvasContent])
+
+  // 判断某张缩略图是不是当前画布上的那张。data URL 可能好几 MB，先比长度，
+  // 不同就直接返回，避免每次渲染都做一次长字符串比较。
+  const isShownOnCanvas = useCallback(
+    (dataUrl: string) => dataUrl.length === canvasContent.length && dataUrl === canvasContent,
+    [canvasContent],
+  )
 
   // 加载当前模型信息 —— 按 engine 区分：image2 走自己的图像模型，
   // text engines 走主 LLM（gemini/claude）
@@ -334,13 +373,52 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     }
   }
 
-  // Auto-scroll to bottom
+  // ── 吸底 ─────────────────────────────────────────────────────────────
+  // 需求：流式输出时默认贴底；用户手动往上拖了就别再把他拽回来，拖回底部才恢复。
+  //
+  // 两个实现要点：
+  // 1) 不用 scrollIntoView({behavior:'smooth'})。流式输出期间 messages 变动极
+  //    频繁，每次都重启一段平滑动画，动画互相打断，结果就是追不上、停在半路 ——
+  //    这正是"滚动条没有始终在最底端"的表现。直接写 scrollTop 是瞬时的，能一直贴住。
+  // 2) 吸底状态存 ref 不存 state：它只影响滚动，不该触发任何重渲染。
+  const STICK_BOTTOM_THRESHOLD_PX = 24
+  const stickToBottomRef = useRef(true)
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }
+
+  // 用户滚动 → 更新是否还贴着底。往下滚回底部附近就自动恢复吸底。
+  const handleListScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    stickToBottomRef.current = distance <= STICK_BOTTOM_THRESHOLD_PX
+  }
+
+  // 切项目：换了一份对话，重新吸底（否则上一个项目里手动上滚的状态会带过来）
   useEffect(() => {
-    // 历史记录批量加载（条数骤增 >1）时直接跳到底部，流式增量时平滑滚动
-    const jumped = messages.length - prevMsgCountRef.current > 1
-    prevMsgCountRef.current = messages.length
-    messagesEndRef.current?.scrollIntoView({ behavior: jumped ? 'auto' : 'smooth' })
+    stickToBottomRef.current = true
+  }, [currentProjectId])
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return
+    scrollToBottom()
   }, [messages])
+
+  // 内容异步变高（图片加载完、代码高亮、Mermaid/DrawIO 渲染）时补一次吸底。
+  // 必须观察内容元素而不是滚动容器本身 —— 容器盒子尺寸不变、只有 scrollHeight 变，
+  // ResizeObserver 挂在容器上是收不到的。
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (stickToBottomRef.current) scrollToBottom()
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Handle initial prompt from Quick Start (Path A)
   useEffect(() => {
@@ -469,6 +547,8 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     const currentAttachments = initialAtts ?? (attachments.length > 0 ? [...attachments] : undefined)
     setInputValue('')
     setAttachments([])
+    // 主动发消息 = 用户想看回复，重新吸底（哪怕他刚才为了读上文手动上滚过）
+    stickToBottomRef.current = true
     const effectiveThinking: ThinkingLevel = forceThinkingLevel ?? thinkingLevel
     const effectiveParams: Image2Params | null = forceImage2Params ?? image2Params
     await generate(
@@ -493,6 +573,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     if (isStreaming || !currentProjectId) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
+    stickToBottomRef.current = true
     await generate(
       currentProjectId,
       lastUserMsg.content,
@@ -541,7 +622,12 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
       </div>
 
       {/* Messages */}
-      <div className="ai-messages-scroll flex-1 overflow-y-auto p-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleListScroll}
+        className="ai-messages-scroll flex-1 overflow-y-auto p-4"
+      >
+        <div ref={contentRef}>
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted">
             <p className="text-sm">
@@ -558,6 +644,8 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 <AssistantMessageCard
                   msg={msg}
                   onRegenerate={handleRegenerate}
+                  onShowImage={handleShowImage}
+                  isShownOnCanvas={isShownOnCanvas}
                   modelInfo={modelInfo}
                 />
               ) : (
@@ -604,7 +692,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
             </div>
           ))
         )}
-        <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Attachment Preview - 消息列表下方：缩略图 / 文件名 / 移除按钮 */}
