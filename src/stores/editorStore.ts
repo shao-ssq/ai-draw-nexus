@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isEmptyDrawioXml } from '@/lib/drawioXml'
 import type { Project, EngineType } from '@/types'
 
 // 缩略图获取器类型
@@ -121,8 +122,11 @@ export const selectActiveContent = (s: EditorState): string =>
 export const selectIsEmpty = (s: EditorState): boolean => {
   const id = s.currentProjectId
   if (!id) return true
-  const c = s.contentByProject[id]
-  return !c || c.trim() === ''
+  const content = s.contentByProject[id] ?? ''
+  if (s.projectById[id]?.engineType === 'drawio') {
+    return isEmptyDrawioXml(content)
+  }
+  return content.trim() === ''
 }
 
 export const selectActiveHasUnsavedChanges = (s: EditorState): boolean =>

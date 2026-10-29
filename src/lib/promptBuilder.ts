@@ -54,6 +54,19 @@ ${userInput}
 仅输出最终图中的可见 mxCell 元素。不要输出 ASCII Layout、Blueprint、规划说明、mxfile、diagram、mxGraphModel、root，也不要输出 id 为 0 和 1 的基础 mxCell。`
   }
 
+  // Single-phase generation (Diagram+)
+  if (!useTwoPhase && engineType === 'diagram-design') {
+    return `用户需求：
+"""
+${userInput}
+"""
+
+一次性生成完整的 Diagram+ HTML 文档。
+根据需求选择最合适的图表类型与语义模式，使用编辑级排版、清晰的信息层级、统一的字体与配色，以及规范的 SVG 连接线。
+图表中文字语言：中文。所有图表可见文本必须与用户当前网页界面语言保持一致。
+仅输出从 <!DOCTYPE html> 到 </html> 的完整 HTML，不要输出规划说明、Markdown 代码块、解释或多个候选方案。`
+  }
+
   // Single-phase generation (image2)
   // image2 是图像生成：服务端会注入 SYSTEM_PROMPTS.image2（drawing-prompt designer 指令），
   // 让设计师 LLM 把"用户需求"翻译成图像模型用的 prompt。所以这里只传用户原始输入，
@@ -149,6 +162,7 @@ export function extractCode(response: string, _engineType: EngineType): string {
     /```mermaid\n?([\s\S]*?)```/i,
     /```json\n?([\s\S]*?)```/i,
     /```xml\n?([\s\S]*?)```/i,
+    /```html\n?([\s\S]*?)```/i,
     /```\n?([\s\S]*?)```/,
   ]
 

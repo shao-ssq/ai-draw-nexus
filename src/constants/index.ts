@@ -11,11 +11,20 @@ import {
 } from 'lucide-react'
 import type { EngineType } from '@/types'
 
+export const ENGINE_LABEL: Record<EngineType, string> = {
+  mermaid: 'Mermaid',
+  excalidraw: 'Excalidraw',
+  drawio: 'Draw.io',
+  'diagram-design': 'Diagram+',
+  image2: 'Image2',
+}
+
 export const ENGINES: { value: EngineType; label: string }[] = [
-  { value: 'mermaid', label: 'Mermaid' },
-  { value: 'excalidraw', label: 'Excalidraw' },
-  { value: 'drawio', label: 'Draw.io' },
-  { value: 'image2', label: 'Image2' },
+  { value: 'mermaid', label: ENGINE_LABEL.mermaid },
+  { value: 'excalidraw', label: ENGINE_LABEL.excalidraw },
+  { value: 'drawio', label: ENGINE_LABEL.drawio },
+  { value: 'diagram-design', label: ENGINE_LABEL['diagram-design'] },
+  { value: 'image2', label: ENGINE_LABEL.image2 },
 ]
 
 export const NAV_ITEMS = [

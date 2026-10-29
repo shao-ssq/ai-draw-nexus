@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, VersionHistory, ChatMessage } from '@/types'
+import type { Project, ProjectDraft, VersionHistory, ChatMessage } from '@/types'
 
 /**
  * WeDraw Database
@@ -16,6 +16,7 @@ class WeDrawDB extends Dexie {
   projects!: EntityTable<Project, 'id'>
   versionHistory!: EntityTable<VersionHistory, 'id'>
   chatHistories!: EntityTable<ChatHistoryRecord, 'projectId'>
+  drafts!: EntityTable<ProjectDraft, 'projectId'>
 
   constructor() {
     super('WeDrawDB')
@@ -32,6 +33,14 @@ class WeDrawDB extends Dexie {
       projects: 'id, title, engineType, createdAt, updatedAt',
       versionHistory: 'id, projectId, timestamp',
       chatHistories: 'projectId',
+    })
+
+    // v3: 新增自动草稿表，与历史版本分开保存，避免刷屏式产生版本记录
+    this.version(3).stores({
+      projects: 'id, title, engineType, createdAt, updatedAt',
+      versionHistory: 'id, projectId, timestamp',
+      chatHistories: 'projectId',
+      drafts: 'projectId',
     })
   }
 }

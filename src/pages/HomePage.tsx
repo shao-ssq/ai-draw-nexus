@@ -315,12 +315,14 @@ export function HomePage() {
                       mermaid: 'bg-indigo-500',
                       excalidraw: 'bg-orange-500',
                       drawio: 'bg-emerald-500',
+                      'diagram-design': 'bg-neutral-600',
                       image2: 'bg-sky-500',
                     }
                     const descriptions: Record<string, string> = {
                       mermaid: '适合流程、时序、ER 等结构化图；文本语法清晰，便于版本管理和后续手工修改。',
                       excalidraw: '适合方案草图、白板讨论和产品构思；手绘感更自然，表达关系比追求精确排版更重要。',
                       drawio: '适合架构、拓扑、UML 和交付级技术图；图元库丰富，适合复杂系统和规范化排版。',
+                      'diagram-design': '面向发布与演示的编辑级图表；支持 45 种类型、统一设计规范、HTML/SVG 预览与导出。',
                       image2: '文字描述直接生成高保真图像；适合插画、海报、产品图、概念图等非结构化视觉素材。',
                     }
                     const active = selectedEngine === engine.value

@@ -3,7 +3,6 @@ import {
   useEditorStore,
   selectActiveContent,
   selectActiveProjectId,
-  selectActiveProject,
   selectEngineType,
 } from '@/stores/editorStore'
 import {
@@ -14,6 +13,7 @@ import {
 import { MermaidRenderer, type MermaidRendererRef } from '@/features/engines/mermaid/MermaidRenderer'
 import { ExcalidrawEditor, type ExcalidrawEditorRef } from '@/features/engines/excalidraw/ExcalidrawEditor'
 import { DrawioEditor, type DrawioEditorRef } from '@/features/engines/drawio/DrawioEditor'
+import { DiagramDesignRenderer, type DiagramDesignRendererRef } from '@/features/engines/diagram/DiagramDesignRenderer'
 import { Image2Viewer, type Image2ViewerRef } from '@/features/engines/image2/Image2Viewer'
 
 export interface CanvasAreaRef {
@@ -30,7 +30,6 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
   // 字典化 store —— 切换项目只换槽位，旧槽位的里继续保留后台请求的累积
   const currentContent = useEditorStore(selectActiveContent)
   const currentProjectId = useEditorStore(selectActiveProjectId)
-  const currentProject = useEditorStore(selectActiveProject)
   const engineType = useEditorStore(selectEngineType)
   // Loading overlay 只反映当前活跃项目的流式状态 —— 后台项目的 streaming 不会污染当前 UI
   const isLoading = useChatStore(selectActiveIsStreaming)
@@ -46,6 +45,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
   const mermaidRef = useRef<MermaidRendererRef>(null)
   const excalidrawRef = useRef<ExcalidrawEditorRef>(null)
   const drawioRef = useRef<DrawioEditorRef>(null)
+  const diagramDesignRef = useRef<DiagramDesignRendererRef>(null)
   const image2Ref = useRef<Image2ViewerRef>(null)
 
   // Expose methods via ref
@@ -60,6 +60,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.exportAsSvg()
+          break
+        case 'diagram-design':
+          diagramDesignRef.current?.exportAsSvg()
           break
         case 'image2':
           image2Ref.current?.exportAsSvg()
@@ -77,6 +80,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.exportAsPng()
           break
+        case 'diagram-design':
+          diagramDesignRef.current?.exportAsPng()
+          break
         case 'image2':
           image2Ref.current?.exportAsPng()
           break
@@ -92,6 +98,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.exportAsSource()
+          break
+        case 'diagram-design':
+          diagramDesignRef.current?.exportAsSource()
           break
         case 'image2':
           image2Ref.current?.exportAsSource()
@@ -109,6 +118,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.showSourceCode()
           break
+        case 'diagram-design':
+          diagramDesignRef.current?.showSourceCode()
+          break
       }
     },
     hideSourceCode: () => {
@@ -121,6 +133,9 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
           break
         case 'drawio':
           drawioRef.current?.hideSourceCode()
+          break
+        case 'diagram-design':
+          diagramDesignRef.current?.hideSourceCode()
           break
       }
     },
@@ -135,11 +150,17 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
         case 'drawio':
           drawioRef.current?.toggleSourceCode()
           break
+        case 'diagram-design':
+          diagramDesignRef.current?.toggleSourceCode()
+          break
       }
     },
     getThumbnail: async () => {
       if (engineType === 'drawio' && drawioRef.current) {
         return drawioRef.current.getThumbnail()
+      }
+      if (engineType === 'diagram-design' && diagramDesignRef.current) {
+        return diagramDesignRef.current.getThumbnail()
       }
       if (engineType === 'image2' && image2Ref.current) {
         return image2Ref.current.getThumbnail()
@@ -148,7 +169,7 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
     },
   }), [engineType])
 
-  // Register thumbnail getter for drawio & image2 engines (按 projectId 注册，
+  // Register thumbnail getter for drawio, Diagram+ & image2 engines (按 projectId 注册，
   // 后台项目的 thumbnailGetter 各自独立，互不影响)
   useEffect(() => {
     if (!currentProjectId) return
@@ -156,6 +177,11 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
 
     if (engineType === 'drawio' && drawioRef.current) {
       setThumbnailGetter(projectId, async () => drawioRef.current!.getThumbnail())
+      return () => setThumbnailGetter(projectId, null)
+    }
+
+    if (engineType === 'diagram-design' && diagramDesignRef.current) {
+      setThumbnailGetter(projectId, async () => diagramDesignRef.current!.getThumbnail())
       return () => setThumbnailGetter(projectId, null)
     }
 
@@ -233,6 +259,14 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
             onChange={handleContentChange}
           />
         )
+      case 'diagram-design':
+        return (
+          <DiagramDesignRenderer
+            ref={diagramDesignRef}
+            key={projectKey}
+            code={currentContent}
+          />
+        )
       case 'image2':
         return (
           <Image2Viewer
@@ -250,8 +284,16 @@ export const CanvasArea = forwardRef<CanvasAreaRef>(function CanvasArea(_, ref) 
     <div className="relative h-full w-full bg-background">
       {renderEngine()}
 
-      {/* Loading Overlay */}
-      {isLoading && (
+      {/* Draw.IO 流式生成时保留画布可见，让已完成的图形实时出现。 */}
+      {isLoading && engineType === 'drawio' && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface/95 px-3 py-1.5 shadow-sm backdrop-blur-sm">
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-r-transparent" />
+          <p className="text-xs text-muted">正在生成，画布实时更新… {elapsedSec}s</p>
+        </div>
+      )}
+
+      {/* 其他引擎沿用原来的加载遮罩。 */}
+      {isLoading && engineType !== 'drawio' && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80">
           <div className="text-center">
             <div className="mb-2 h-8 w-8 animate-spin rounded-full border-2 border-primary border-r-transparent mx-auto" />

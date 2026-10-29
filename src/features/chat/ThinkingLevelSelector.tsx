@@ -48,7 +48,7 @@ export function ThinkingLevelSelector({
   disabled = false,
 }: ThinkingLevelSelectorProps) {
   const shortLabel = LEVEL_LABEL[value]
-  const isActive = value !== 'medium' // 高亮中等（默认）档位
+  const isActive = value !== 'low' // 思考和深度思考都显示为已选中的高亮状态
 
   const content = (
     <DropdownMenuContent align="end" className="w-64">

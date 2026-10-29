@@ -1,6 +1,7 @@
 import mermaid from 'mermaid'
 import { exportToBlob, restoreElements, convertToExcalidrawElements } from '@excalidraw/excalidraw'
 import type { EngineType } from '@/types'
+import { extractStandaloneSvg, renderSvgToPngDataUrl } from '@/lib/diagramDesign'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ExcalidrawElementAny = any
@@ -183,6 +184,13 @@ export async function generateThumbnail(
       // Drawio thumbnails are generated via thumbnailGetter in editorStore
       // which uses DrawioEditor's native export for accurate rendering
       return ''
+    case 'diagram-design':
+      try {
+        return await renderSvgToPngDataUrl(extractStandaloneSvg(content), 1, 400, 300)
+      } catch (error) {
+        console.error('Failed to generate Diagram+ thumbnail:', error)
+        return ''
+      }
     default:
       return ''
   }

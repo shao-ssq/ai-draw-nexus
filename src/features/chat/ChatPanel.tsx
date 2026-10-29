@@ -49,6 +49,7 @@ const ENGINE_LABEL: Record<EngineType, string> = {
   mermaid: 'Mermaid Agent',
   excalidraw: 'Excalidraw Agent',
   drawio: 'DrawIO Agent',
+  'diagram-design': 'Diagram+ Agent',
   image2: 'Image2 Agent',
 }
 

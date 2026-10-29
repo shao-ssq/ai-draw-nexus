@@ -81,3 +81,25 @@ export function unwrapFromMxfile(xml: string): string {
   }
   return xml
 }
+
+/**
+ * 从仍在生成的 XML 中提取已经闭合的 mxCell。
+ * 未完成的最后一个 cell 会被忽略，因此每次返回值都能安全包装并交给 drawio。
+ * id=0/1 是 drawio 的基础节点，由 wrapToMxfile 统一补充，这里避免重复。
+ */
+export function extractPartialDrawioCells(xml: string): string | null {
+  const matches = xml.match(/<mxCell\b[^>]*\/\s*>|<mxCell\b[^>]*>[\s\S]*?<\/mxCell\s*>/gi) ?? []
+  const cells = matches.filter((cell) => !/\bid\s*=\s*["'](?:0|1)["']/i.test(cell))
+  if (cells.length === 0) return null
+
+  const candidate = cells.join('\n')
+  const doc = new DOMParser().parseFromString(`<root>${candidate}</root>`, 'text/xml')
+  return doc.querySelector('parsererror') ? null : candidate
+}
+
+/** Draw.IO 初始化时会写回仅含基础节点的 XML，这种文档仍应视为空画布。 */
+export function isEmptyDrawioXml(xml: string): boolean {
+  if (!xml.trim()) return true
+  const cells = xml.match(/<mxCell\b[^>]*>/gi) ?? []
+  return cells.every((cell) => /\bid\s*=\s*["'](?:0|1)["']/i.test(cell))
+}

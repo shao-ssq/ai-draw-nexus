@@ -122,6 +122,44 @@ export function validateDrawio(xml: string): ValidationResult {
   }
 }
 
+/** Diagram+ 完整 HTML／SVG 合约与安全检查。 */
+export function validateDiagramDesign(html: string): ValidationResult {
+  if (!/<!doctype\s+html/i.test(html) || !/<\/html\s*>/i.test(html)) {
+    return { valid: false, error: 'Diagram+ 必须输出完整的 HTML 文档' }
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const svg = doc.querySelector('svg')
+  if (!svg) return { valid: false, error: 'Diagram+ HTML 中缺少 SVG 图形' }
+  if (!svg.getAttribute('viewBox')) return { valid: false, error: 'SVG 缺少 viewBox' }
+  if (svg.getAttribute('role') !== 'img') return { valid: false, error: 'SVG 缺少 role="img"' }
+  if (!svg.querySelector(':scope > title')?.textContent?.trim()) {
+    return { valid: false, error: 'SVG 缺少有效的 title' }
+  }
+  if (!svg.querySelector(':scope > desc')?.textContent?.trim()) {
+    return { valid: false, error: 'SVG 缺少有效的 desc' }
+  }
+
+  if (doc.querySelector('script, iframe, object, embed, base, form')) {
+    return { valid: false, error: 'Diagram+ 输出包含不允许的可执行或嵌入元素' }
+  }
+  for (const element of Array.from(doc.querySelectorAll('*'))) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (/^on/i.test(attribute.name)) {
+        return { valid: false, error: 'Diagram+ 输出包含不允许的事件属性' }
+      }
+    }
+  }
+  for (const link of Array.from(doc.querySelectorAll<HTMLLinkElement>('link[href]'))) {
+    const href = link.getAttribute('href') ?? ''
+    if (!href.startsWith('https://fonts.googleapis.com/css2')) {
+      return { valid: false, error: 'Diagram+ 输出包含未获准的外部资源' }
+    }
+  }
+
+  return { valid: true }
+}
+
 /**
  * Validate content based on engine type
  */
@@ -136,6 +174,8 @@ export async function validateContent(
       return validateExcalidraw(content)
     case 'drawio':
       return validateDrawio(content)
+    case 'diagram-design':
+      return validateDiagramDesign(content)
     case 'image2':
       // image2 的 content 是 data URL（data:image/...;base64,...）
       if (!content) {

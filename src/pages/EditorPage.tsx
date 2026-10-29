@@ -14,6 +14,7 @@ import {
 import { useChatStore } from '@/stores/chatStore'
 import { ProjectRepository } from '@/services/projectRepository'
 import { VersionRepository } from '@/services/versionRepository'
+import { DraftRepository } from '@/services/draftRepository'
 import { useToast } from '@/hooks/useToast'
 import {
   DropdownMenu,
@@ -23,6 +24,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/Dropdown'
 import { TooltipProvider } from '@/components/ui/Tooltip'
+
+const DRAFT_SAVE_DELAY_MS = 500
+
+function saveDraft(projectId: string, content: string) {
+  DraftRepository.save(projectId, content).catch((error) => {
+    console.error('Failed to auto-save draft:', error)
+  })
+}
 
 export function EditorPage() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -43,6 +52,7 @@ export function EditorPage() {
   const currentContent = useEditorStore(selectActiveContent)
   const hasUnsavedChanges = useEditorStore(selectActiveHasUnsavedChanges)
   const setProject = useEditorStore((s) => s.setProject)
+  const setContent = useEditorStore((s) => s.setContent)
   const setContentFromVersion = useEditorStore((s) => s.setContentFromVersion)
   const markAsSaved = useEditorStore((s) => s.markAsSaved)
   const setCurrentProjectId = useEditorStore((s) => s.setCurrentProjectId)
@@ -79,11 +89,19 @@ export function EditorPage() {
       setProject(id, project)
       setEditedTitle(project.title)
 
-      // Load latest version content —— 写到 id 槽，不影响其他槽
-      const latestVersion = await VersionRepository.getLatest(id)
+      // 同时读取最近版本和自动草稿；只有更新的草稿才覆盖版本内容。
+      const [latestVersion, draft] = await Promise.all([
+        VersionRepository.getLatest(id),
+        DraftRepository.getByProjectId(id),
+      ])
       if (isCancelled()) return
-      if (latestVersion) {
-        setContentFromVersion(id, latestVersion.content)
+
+      setContentFromVersion(id, latestVersion?.content ?? '')
+      if (
+        draft &&
+        (!latestVersion || draft.updatedAt.getTime() > latestVersion.timestamp.getTime())
+      ) {
+        setContent(id, draft.content)
       }
 
       // 切换 chatStore 的活跃项目 + 加载该项目的历史对话记录
@@ -96,6 +114,40 @@ export function EditorPage() {
       if (!isCancelled()) setIsLoading(false)
     }
   }
+
+  // 画布内容变化后自动保存草稿，避免高频绘制时连续写 IndexedDB。
+  useEffect(() => {
+    if (isLoading || !currentProject?.id) return
+    const id = currentProject.id
+    const timer = window.setTimeout(() => {
+      saveDraft(id, currentContent)
+    }, DRAFT_SAVE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [currentProject?.id, currentContent, isLoading])
+
+  // 在防抖等待期间刷新或关闭页面时，同步备份最后一次画布内容。
+  useEffect(() => {
+    const flushActiveDraft = () => {
+      if (isLoading) return
+      const state = useEditorStore.getState()
+      const id = state.currentProjectId
+      if (!id) return
+      const content = state.contentByProject[id]
+      if (content !== undefined) DraftRepository.saveSync(id, content)
+    }
+    window.addEventListener('pagehide', flushActiveDraft)
+    return () => window.removeEventListener('pagehide', flushActiveDraft)
+  }, [isLoading])
+
+  // 切换项目或离开编辑器时，也要保存尚未到防抖时间的最后一笔修改。
+  useEffect(() => {
+    if (isLoading || !currentProject?.id) return
+    const id = currentProject.id
+    return () => {
+      const content = useEditorStore.getState().contentByProject[id]
+      if (content !== undefined) saveDraft(id, content)
+    }
+  }, [currentProject?.id, isLoading])
 
   // Focus title input when editing
   useEffect(() => {
@@ -183,8 +235,8 @@ export function EditorPage() {
       })
       markAsSaved(currentProject.id)
 
-      // Update thumbnail for drawio using native export
-      if (currentProject.engineType === 'drawio' && canvasRef.current) {
+      // Update thumbnail for engines that expose a canvas renderer
+      if ((currentProject.engineType === 'drawio' || currentProject.engineType === 'diagram-design') && canvasRef.current) {
         try {
           const thumbnail = await canvasRef.current.getThumbnail()
           if (thumbnail) {
@@ -275,9 +327,11 @@ export function EditorPage() {
                       ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
                       : currentProject.engineType === 'drawio'
                         ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                        : currentProject.engineType === 'diagram-design'
+                          ? 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                   }`}>
-                  {currentProject.engineType.toUpperCase()}
+                  {currentProject.engineType === 'diagram-design' ? 'Diagram+' : currentProject.engineType.toUpperCase()}
                 </span>
                 <Button
                   variant="ghost"

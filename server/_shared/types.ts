@@ -1,4 +1,4 @@
-export type EngineType = 'mermaid' | 'excalidraw' | 'drawio'
+export type EngineType = 'mermaid' | 'excalidraw' | 'drawio' | 'diagram-design' | 'image2'
 
 /** Gemini 思考档位：低 / 中 / 高（默认 medium） */
 export type ThinkingLevel = 'low' | 'medium' | 'high'

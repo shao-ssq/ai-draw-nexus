@@ -21,6 +21,7 @@ const ENGINE_LANG: Record<string, string> = {
   mermaid: 'mermaid',
   excalidraw: 'json',
   drawio: 'xml',
+  'diagram-design': 'html',
 }
 
 /**
@@ -30,6 +31,8 @@ const ENGINE_LANG: Record<string, string> = {
 function looksLikeCode(src: string): boolean {
   const trimmed = src.trim()
   if (!trimmed) return false
+  // Diagram+ HTML 文档
+  if (/^<!doctype\s+html|^<html[\s>]/i.test(trimmed)) return true
   // XML / mxCell
   if (/^<\??mx|<mxCell|<\/mxGraphModel/i.test(trimmed)) return true
   // JSON 数组或对象

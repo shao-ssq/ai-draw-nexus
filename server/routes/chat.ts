@@ -4,6 +4,7 @@ import { corsHeaders } from '../_shared/cors.js'
 import { callGemini } from '../_shared/ai-providers.js'
 import { streamGemini } from '../_shared/stream-gemini.js'
 import { SYSTEM_PROMPTS } from '../_shared/systemPrompts.js'
+import { getDiagramDesignSystemPrompt } from '../_shared/diagramDesignPrompt.js'
 
 const app = new Hono()
 
@@ -13,7 +14,9 @@ function injectSystemPrompt(
   engine: ChatRequest['engine']
 ): Message[] {
   if (!engine) return messages
-  const systemPrompt = SYSTEM_PROMPTS[engine]
+  const systemPrompt = engine === 'diagram-design'
+    ? getDiagramDesignSystemPrompt(messages)
+    : SYSTEM_PROMPTS[engine]
   if (!systemPrompt) return messages
   const nonSystem = messages.filter((m) => m.role !== 'system')
   return [{ role: 'system', content: systemPrompt }, ...nonSystem]

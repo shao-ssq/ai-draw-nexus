@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { db } from '@/lib/db'
+import { DraftRepository } from '@/services/draftRepository'
 import type { Project, EngineType } from '@/types'
 
 /**
@@ -60,14 +61,17 @@ export const ProjectRepository = {
    * Delete project and its version history
    */
   async delete(id: string): Promise<void> {
-    await db.transaction('rw', [db.projects, db.versionHistory, db.chatHistories], async () => {
+    await db.transaction('rw', [db.projects, db.versionHistory, db.chatHistories, db.drafts], async () => {
       // Delete all version history for this project
       await db.versionHistory.where('projectId').equals(id).delete()
       // Delete chat history for this project
       await db.chatHistories.delete(id)
+      // Delete the auto-saved draft
+      await db.drafts.delete(id)
       // Delete the project
       await db.projects.delete(id)
     })
+    DraftRepository.removeEmergency(id)
   },
 
   /**

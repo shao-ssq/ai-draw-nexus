@@ -12,7 +12,7 @@ import {
 import { generateThumbnail } from '@/lib/thumbnail'
 import { aiService } from '@/services/aiService'
 import { validateContent } from '@/lib/validators'
-import { ensureMxfileWrapped } from '@/lib/drawioXml'
+import { ensureMxfileWrapped, extractPartialDrawioCells } from '@/lib/drawioXml'
 import { useToast } from '@/hooks/useToast'
 import type { PayloadMessage, EngineType, Attachment, ImageAttachment, ContentPart, ThinkingLevel, Image2Params } from '@/types'
 
@@ -207,7 +207,7 @@ export function useAIGenerate() {
   }, [tickContent, updateMessage])
 
   /**
-   * 流式累积回调：聊天面板走 typewriter（rAF 渐进），excalidraw 画布仍用真实 partial 增量。
+   * 流式累积回调：聊天面板走 typewriter（rAF 渐进），画布用真实 partial 增量。
    * projectId 锁定：所有 store 写入都用这个 id，不受 currentProjectId 影响。
    */
   const handleStreamAccumulated = useCallback((
@@ -217,10 +217,21 @@ export function useAIGenerate() {
     accumulated: string,
   ) => {
     handleContentChunk(projectId, assistantMsgId, accumulated)
-    // excalidraw 画布用真实 partial（extractPartialExcalidrawArray 提取完整元素）
-    if (engineType !== 'excalidraw') return
+    if (engineType !== 'excalidraw' && engineType !== 'drawio') return
+
     const now = Date.now()
-    if (now - lastStreamRenderRef.current < 250) return
+    const renderInterval = engineType === 'drawio' ? 400 : 250
+    if (now - lastStreamRenderRef.current < renderInterval) return
+
+    if (engineType === 'drawio') {
+      // 只渲染已经闭合的 mxCell，最后一个尚未写完的标签不会进入画布。
+      const partial = extractPartialDrawioCells(accumulated)
+      if (!partial) return
+      lastStreamRenderRef.current = now
+      setContent(projectId, ensureMxfileWrapped(partial))
+      return
+    }
+
     lastStreamRenderRef.current = now
     const partial = extractPartialExcalidrawArray(accumulated)
     if (!partial) return

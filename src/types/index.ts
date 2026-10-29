@@ -1,5 +1,5 @@
 // Engine Types
-export type EngineType = 'mermaid' | 'excalidraw' | 'drawio' | 'image2'
+export type EngineType = 'mermaid' | 'excalidraw' | 'drawio' | 'diagram-design' | 'image2'
 
 /** Gemini 思考档位：非思考(low) / 思考(medium) / 深度思考(high)，默认 medium */
 export type ThinkingLevel = 'low' | 'medium' | 'high'
@@ -21,6 +21,13 @@ export interface VersionHistory {
   content: string // Source Code / JSON / XML
   changeSummary: string // "Initial" | "AI Edit" | "Manual"
   timestamp: Date
+}
+
+// 自动保存的绘图草稿（与手动创建的历史版本相互独立）
+export interface ProjectDraft {
+  projectId: string
+  content: string
+  updatedAt: Date
 }
 
 // Attachment types for chat messages

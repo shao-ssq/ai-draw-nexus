@@ -28,6 +28,11 @@ const ENGINE_TIPS: Record<EngineType, { title: string; features: string[]; types
     features: ['专业图表', '精细编辑'],
     types: ['UML', '流程图', '架构图'],
   },
+  'diagram-design': {
+    title: 'Diagram+',
+    features: ['编辑级设计', '45 种图表', '品牌视觉'],
+    types: ['架构图', '流程图', '数据图表', '商业分析', '发布级示意图'],
+  },
   image2: {
     title: 'Image2',
     features: ['文字生图', '高保真', '多尺寸'],

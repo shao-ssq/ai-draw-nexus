@@ -212,9 +212,11 @@ export function ProjectsPage() {
                             ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300'
                             : project.engineType === 'drawio'
                               ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                              : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                              : project.engineType === 'diagram-design'
+                                ? 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
+                                : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                         }`}>
-                          {project.engineType.toUpperCase()}
+                          {project.engineType === 'diagram-design' ? 'Diagram+' : project.engineType.toUpperCase()}
                         </span>
                       </div>
                       <p className="text-xs text-muted">
