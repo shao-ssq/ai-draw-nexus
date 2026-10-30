@@ -10,6 +10,7 @@ import {
   ImagePlus,
 } from 'lucide-react'
 import type { EngineType } from '@/types'
+import { isEngineEnabled } from '@/lib/engineConfig'
 
 export const ENGINE_LABEL: Record<EngineType, string> = {
   mermaid: 'Mermaid',
@@ -19,13 +20,16 @@ export const ENGINE_LABEL: Record<EngineType, string> = {
   image2: 'Image2',
 }
 
-export const ENGINES: { value: EngineType; label: string }[] = [
+const ALL_ENGINES: { value: EngineType; label: string }[] = [
   { value: 'mermaid', label: ENGINE_LABEL.mermaid },
   { value: 'excalidraw', label: ENGINE_LABEL.excalidraw },
   { value: 'drawio', label: ENGINE_LABEL.drawio },
   { value: 'diagram-design', label: ENGINE_LABEL['diagram-design'] },
   { value: 'image2', label: ENGINE_LABEL.image2 },
 ]
+
+export const ENGINES = ALL_ENGINES.filter((engine) => isEngineEnabled(engine.value))
+export const DEFAULT_ENGINE: EngineType = ENGINES[0]?.value ?? 'mermaid'
 
 export const NAV_ITEMS = [
   { icon: Home, label: '首页', path: '/' },
@@ -69,4 +73,4 @@ export const QUICK_ACTIONS = [
     engine: 'drawio' as EngineType,
     prompt: '请帮我用     DrawIO     绘制一个公司组织架构图，包含CEO、各部门经理、团队成员的层级关系'
   },
-]
+].filter((action) => isEngineEnabled(action.engine))

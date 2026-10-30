@@ -44,6 +44,7 @@ import type { Attachment, DocumentAttachment, ImageAttachment, ChatMessage, Engi
 import { ThinkingLevelSelector } from './ThinkingLevelSelector'
 import { Image2ParamsBar } from './Image2ParamsBar'
 import { DEFAULT_IMAGE2_PARAMS } from '@/types'
+import { isEngineEnabled } from '@/lib/engineConfig'
 
 const ENGINE_LABEL: Record<EngineType, string> = {
   mermaid: 'Mermaid Agent',
@@ -317,6 +318,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   const isCanvasEmpty = useEditorStore(selectIsEmpty)
   const engineType = useEditorStore(selectEngineType)
+  const engineEnabled = engineType ? isEngineEnabled(engineType) : false
   // image2：画布内容本身就是图片的 data URL，所以"点缩略图换到画布"就是把
   // 这张图的 data URL 写进当前项目的 content 槽，Image2Viewer 会跟着重渲染。
   const canvasContent = useEditorStore(selectActiveContent)
@@ -541,7 +543,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
     forceThinkingLevel?: ThinkingLevel,
     forceImage2Params?: Image2Params | null,
   ) => {
-    if (!currentProjectId) return
+    if (!currentProjectId || !engineEnabled) return
     const message = text || inputValue.trim()
     if ((!message && attachments.length === 0 && !initialAtts?.length) || isStreaming) return
 
@@ -571,7 +573,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
 
   // 重新生成：找到最后一条用户消息并以其内容重新触发
   const handleRegenerate = async () => {
-    if (isStreaming || !currentProjectId) return
+    if (isStreaming || !currentProjectId || !engineEnabled) return
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastUserMsg) return
     stickToBottomRef.current = true
@@ -750,11 +752,11 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
           {/* Textarea */}
           <textarea
             ref={textareaRef}
-            placeholder="输入你的消息..."
+            placeholder={engineEnabled ? '输入你的消息...' : '此绘图引擎已关闭，可在 .env 中重新启用'}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isStreaming}
+            disabled={isStreaming || !engineEnabled}
             rows={1}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-12 text-sm outline-none placeholder:text-muted disabled:opacity-50"
             style={{ minHeight: '120px', maxHeight: '200px' }}
@@ -768,7 +770,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 size="icon"
                 title="上传文档（最多 5 个，单个 ≤1MB；docx / txt / md）"
                 onClick={handleDocumentUpload}
-                disabled={isStreaming || isProcessingFile}
+                disabled={isStreaming || isProcessingFile || !engineEnabled}
                 className="h-8 w-8 rounded-lg border border-border"
               >
                 <FileText className="h-4 w-4" />
@@ -778,7 +780,7 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 size="icon"
                 title="上传图片（最多 1 张，单个 ≤1MB，再次点击替换）"
                 onClick={handleImageUpload}
-                disabled={isStreaming || isProcessingFile}
+                disabled={isStreaming || isProcessingFile || !engineEnabled}
                 className="h-8 w-8 rounded-lg border border-border"
               >
                 <ImageIcon className="h-4 w-4" />
@@ -795,11 +797,11 @@ export function ChatPanel({ onCollapse }: ChatPanelProps = {}) {
                 value={thinkingLevel}
                 onChange={setThinkingLevel}
                 variant="compact"
-                disabled={isStreaming}
+                disabled={isStreaming || !engineEnabled}
               />
               <Button
                 onClick={() => handleSend()}
-                disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming}
+                disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming || !engineEnabled}
                 size="sm"
                 className="h-8 rounded-lg border border-surface/30"
               >

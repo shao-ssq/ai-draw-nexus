@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { corsHeaders } from '../_shared/cors.js'
+import { isEngineEnabled } from '../_shared/engineConfig.js'
 
 /**
  * POST /api/generate-image
@@ -57,6 +58,9 @@ app.options('/generate-image', (c) => c.body(null, { headers: corsHeaders }))
 
 app.post('/generate-image', async (c) => {
   try {
+    if (!isEngineEnabled('image2')) {
+      return c.json({ error: '绘图引擎 image2 已关闭，请在 .env 中重新启用' }, 403, corsHeaders)
+    }
     const body = (await c.req.json()) as GenerateImageBody
     const { prompt, params = {} } = body
 

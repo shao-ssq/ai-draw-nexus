@@ -8,7 +8,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui'
-import { ENGINES } from '@/constants'
+import { DEFAULT_ENGINE, ENGINES } from '@/constants'
+import { isEngineEnabled } from '@/lib/engineConfig'
 import { ProjectRepository } from '@/services/projectRepository'
 import type { EngineType } from '@/types'
 
@@ -47,10 +48,11 @@ interface CreateProjectDialogProps {
 
 export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogProps) {
   const navigate = useNavigate()
-  const [engine, setEngine] = useState<EngineType>('mermaid')
+  const [engine, setEngine] = useState<EngineType>(DEFAULT_ENGINE)
   const [isCreating, setIsCreating] = useState(false)
 
   const handleCreate = async () => {
+    if (!isEngineEnabled(engine)) return
     setIsCreating(true)
     try {
       const project = await ProjectRepository.create({
@@ -69,7 +71,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
 
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
-      setEngine('mermaid')
+      setEngine(DEFAULT_ENGINE)
     }
     onOpenChange(newOpen)
   }
@@ -135,7 +137,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={isCreating}
+            disabled={isCreating || ENGINES.length === 0}
             className="rounded-full bg-primary text-surface hover:bg-primary/90"
           >
             {isCreating ? '创建中...' : '创建'}

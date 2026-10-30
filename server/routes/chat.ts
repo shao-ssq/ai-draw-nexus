@@ -5,6 +5,7 @@ import { callGemini } from '../_shared/ai-providers.js'
 import { streamGemini } from '../_shared/stream-gemini.js'
 import { SYSTEM_PROMPTS } from '../_shared/systemPrompts.js'
 import { getDiagramDesignSystemPrompt } from '../_shared/diagramDesignPrompt.js'
+import { isEngineEnabled } from '../_shared/engineConfig.js'
 
 const app = new Hono()
 
@@ -38,6 +39,10 @@ app.post('/chat', async (c) => {
 
     if (!messages || !Array.isArray(messages)) {
       return c.json({ error: 'Invalid request: messages required' }, 400, corsHeaders)
+    }
+    // 无 engine 的请求用于标题生成等通用能力，不按绘图引擎拦截。
+    if (engine && !isEngineEnabled(engine)) {
+      return c.json({ error: `绘图引擎 ${engine} 已关闭，请在 .env 中重新启用` }, 403, corsHeaders)
     }
 
     const thinking = resolveThinking(body.thinking ?? process.env.AI_THINKING)

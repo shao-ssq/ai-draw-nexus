@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FileText, Send, Image as ImageIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { AppSidebar, AppHeader, CreateProjectDialog } from '@/components/layout'
-import { ENGINES, QUICK_ACTIONS } from '@/constants'
+import { DEFAULT_ENGINE, ENGINES, QUICK_ACTIONS } from '@/constants'
 import type { EngineType, Attachment, DocumentAttachment, ImageAttachment, ThinkingLevel, Image2Params } from '@/types'
 import { ProjectRepository } from '@/services/projectRepository'
 import { useChatStore } from '@/stores/chatStore'
@@ -22,7 +22,7 @@ function isImageFile(file: File): boolean {
 export function HomePage() {
   const navigate = useNavigate()
   const [prompt, setPrompt] = useState('')
-  const [selectedEngine, setSelectedEngine] = useState<EngineType>('mermaid')
+  const [selectedEngine, setSelectedEngine] = useState<EngineType>(DEFAULT_ENGINE)
   const [isLoading, setIsLoading] = useState(false)
   const [attachments, setAttachments] = useState<File[]>([])
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('medium')
@@ -42,7 +42,7 @@ export function HomePage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   const handleQuickStart = async () => {
-    if (!prompt.trim()) return
+    if (!prompt.trim() || ENGINES.length === 0) return
 
     setIsLoading(true)
     try {
@@ -379,7 +379,7 @@ export function HomePage() {
                   {/* 发送按钮 */}
                   <Button
                     onClick={handleQuickStart}
-                    disabled={!prompt.trim() || isLoading}
+                    disabled={!prompt.trim() || isLoading || ENGINES.length === 0}
                     className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-surface transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {isLoading ? (
